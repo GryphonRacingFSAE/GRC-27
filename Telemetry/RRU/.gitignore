@@ -1,0 +1,27 @@
+# PlatformIO and build output
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+*.o
+*.obj
+*.elf
+*.hex
+*.map
+
+# Local editor settings
+.vscode/
+.idea/
+.vs/
+
+# Temporary files and logs
+*.log
+*.tmp
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
