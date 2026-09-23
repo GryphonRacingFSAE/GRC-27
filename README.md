@@ -1,1 +1,1 @@
-# GRC-27
+All Software/Embedded projects for GRC 27
