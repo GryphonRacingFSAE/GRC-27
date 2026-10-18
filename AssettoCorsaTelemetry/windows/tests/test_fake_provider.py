@@ -2,7 +2,12 @@ import unittest
 
 from ac_windows.fake_provider import FakeProvider
 from ac_windows.provider import ReadOutcome, SourceState
-from ac_windows.scenarios import SCENARIOS, pause_and_resume, startup_and_drive
+from ac_windows.scenarios import (
+    SCENARIOS,
+    missing_channel,
+    pause_and_resume,
+    startup_and_drive,
+)
 
 
 # Play a script for a number of steps and return every snapshot
@@ -51,6 +56,11 @@ class TestStatesAreDistinguishable(unittest.TestCase):
         snap = play(pause_and_resume, 4)[3]
         self.assertEqual(snap.state, SourceState.ABSENT)
         self.assertEqual(snap.read_outcome, ReadOutcome.FAILED)
+
+    def test_missing_channel_is_not_zero(self):
+        snap = play(missing_channel, 2)[1]
+        self.assertIsNone(snap.channels["rpm"])
+        self.assertEqual(snap.channels["speed_kph"], 31.0)
 
 
 class TestSnapshotsDoNotChange(unittest.TestCase):
