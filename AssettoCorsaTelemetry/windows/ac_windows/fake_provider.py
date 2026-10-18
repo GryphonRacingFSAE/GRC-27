@@ -1,4 +1,4 @@
-from ac_windows.provider import Provider
+from ac_windows.provider import Provider, ReadOutcome, Snapshot, SourceState
 
 
 class FakeProvider(Provider):
@@ -13,6 +13,14 @@ class FakeProvider(Provider):
 
     # Return the next snapshot from the script and move the bookmark forward
     def read(self):
+        # Script finished: report the game as gone, never repeat an old reading
+        if self.position >= len(self.script):
+            return Snapshot(
+                frame_id=None,
+                state=SourceState.ABSENT,
+                read_outcome=ReadOutcome.FAILED,
+                channels={},
+            )
         item = self.script[self.position]
         self.position += 1
         return item
