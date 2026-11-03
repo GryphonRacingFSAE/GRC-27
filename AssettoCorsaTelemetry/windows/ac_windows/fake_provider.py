@@ -3,7 +3,7 @@ from ac_windows.provider import Provider, ReadOutcome, Snapshot, SourceState
 
 class FakeProvider(Provider):
     def __init__(self, script):
-        self.script = script
+        self.script = list(script)
         self.position = 0
         self.closed = False
 

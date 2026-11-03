@@ -22,7 +22,7 @@ From AssettoCorsaTelemetry\windows:
 
     .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 
-Expected: 4 tests, all OK. They check that a missing reading and a real zero stay different, and that importing a module starts nothing.
+Expected: 14 tests, all OK. They check that a missing reading and a real zero stay different, and that importing a module starts nothing.
 
 ## Try the example program
 From AssettoCorsaTelemetry\windows:

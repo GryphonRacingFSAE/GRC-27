@@ -29,7 +29,7 @@ def main():
             print(
                 f"step {step}: state={snap.state.value} "
                 f"outcome={snap.read_outcome.value} "
-                f"frame={snap.frame_id} channels={snap.channels}"
+                f"frame={snap.frame_id} channels={dict(snap.channels)}"
             )
     finally:
         provider.close()

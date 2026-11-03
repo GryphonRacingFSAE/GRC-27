@@ -1,7 +1,7 @@
 import unittest
 
 from ac_windows.fake_provider import FakeProvider
-from ac_windows.provider import ReadOutcome, SourceState
+from ac_windows.provider import ReadOutcome, Snapshot, SourceState
 from ac_windows.scenarios import (
     SCENARIOS,
     missing_channel,
@@ -73,6 +73,41 @@ class TestSnapshotsDoNotChange(unittest.TestCase):
         p.read()
         after = (held.frame_id, held.state, held.read_outcome, dict(held.channels))
         self.assertEqual(before, after)
+class TestSnapshotsAreReadOnly(unittest.TestCase):
+    def test_editing_returned_channels_fails(self):
+        p = FakeProvider(pause_and_resume)
+        snap = p.read()
+        with self.assertRaises(TypeError):
+            snap.channels["speed_kph"] = 999
+
+    def test_changing_input_dict_does_not_change_snapshot(self):
+        data = {"speed_kph": 10.0}
+        snap = Snapshot(
+            frame_id=1,
+            state=SourceState.LIVE,
+            read_outcome=ReadOutcome.NEW,
+            channels=data,
+        )
+        data["speed_kph"] = 999
+        self.assertEqual(snap.channels["speed_kph"], 10.0)
+
+    def test_changing_input_script_does_not_change_provider(self):
+        script = list(pause_and_resume)
+        p = FakeProvider(script)
+        script.clear()
+        self.assertEqual(p.read().frame_id, 1)
+
+    def test_damage_does_not_reach_another_provider(self):
+        first = FakeProvider(pause_and_resume)
+        snap = first.read()
+        try:
+            snap.channels["speed_kph"] = 999
+        except TypeError:
+            pass
+        first.reset()
+        second = FakeProvider(pause_and_resume)
+        self.assertEqual(first.read().channels["speed_kph"], 20.0)
+        self.assertEqual(second.read().channels["speed_kph"], 20.0)
 
 
 class TestCleanup(unittest.TestCase):

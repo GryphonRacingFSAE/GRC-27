@@ -38,7 +38,8 @@ A `Snapshot`, which cannot be changed after it is made.
 - `read()` returns promptly and never waits on the network.
 - `close()` is safe to call repeatedly, and safe to call before `attach()`.
 - When a script ends, the fake reports `absent` with `failed`, no frame and no channels. It never repeats an old reading as new.
-- The channel names here are placeholders until the #16 contract fixes the final names and units.
+- Channel names such as `speed_kph` and `rpm` are examples. The contract allows dynamic channel names, so the final names can change without changing the interface.
+- Channels are copied into a read-only view when a snapshot is created. Editing a returned reading, or the data it was built from, cannot affect replays or another provider.
 
 ## Scenarios
 
