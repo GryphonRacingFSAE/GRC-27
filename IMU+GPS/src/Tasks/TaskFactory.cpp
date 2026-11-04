@@ -1,5 +1,6 @@
 #include <TaskFactory.h>
 #include <Arduino.h>
+#include <Imu/ImuTask.h>
 
 // static QueueHandle_t dataQueueHandle;
 
@@ -16,4 +17,9 @@ void createTasks() {
 
     // 3. Tasks
     // xTaskCreate(DataAcqTask, "DataAcqTask", 4096, (void*)&dataParams, 1, &dataTaskHandle);
+
+    // IMU: a missing sensor must not stop the other tasks being created.
+    if (!imuTaskStart()) {
+        Serial.println("ERROR: IMU task could not be created");
+    }
 }
