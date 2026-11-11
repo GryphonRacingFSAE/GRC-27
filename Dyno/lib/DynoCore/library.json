@@ -1,7 +1,14 @@
 {
   "name": "DynoCore",
   "version": "0.1.0",
-  "description": "Hardware-free dyno logic (load-cell acquisition, fakes). Builds on the ESP32 and on the host for tests.",
+  "description": "Hardware-free dyno logic (load-cell acquisition, ECU CAN decoding/reception, fakes). Builds on the ESP32 and on the host for tests.",
   "frameworks": "*",
-  "platforms": "*"
+  "platforms": "*",
+  "build": {
+    "flags": [
+      "-Wall",
+      "-Wextra",
+      "-Werror"
+    ]
+  }
 }

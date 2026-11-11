@@ -6,7 +6,7 @@
 #if DYNO_FAKE_INPUTS
 #include <FakeLoadCellProvider.h>
 #else
-#include "../Hardware/Hx711Provider.h"
+#include <Hx711Provider.h>
 #endif
 
 static bool sameCounters(const LoadCellCounters& a, const LoadCellCounters& b) {

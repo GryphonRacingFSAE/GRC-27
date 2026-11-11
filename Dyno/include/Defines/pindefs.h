@@ -11,10 +11,12 @@
 
 static constexpr int PIN_HX711_DOUT = 16;  // TBD (GRC26 "STRAIN_AMP_DATA")
 static constexpr int PIN_HX711_SCK  = 15;  // TBD (GRC26 "STRAIN_AMP_CLK")
+static constexpr int PIN_CAN_TX     = 40;  // TBD (GRC26 Dyno; to the transceiver's TXD)
+static constexpr int PIN_CAN_RX     = 41;  // TBD (GRC26 Dyno; from the transceiver's RXD)
 
 // Add every new pin to this list so clashes fail the build.
 constexpr bool dynoPinsAreDistinct() {
-    constexpr int pins[] = {PIN_HX711_DOUT, PIN_HX711_SCK};
+    constexpr int pins[] = {PIN_HX711_DOUT, PIN_HX711_SCK, PIN_CAN_TX, PIN_CAN_RX};
     constexpr int n = sizeof(pins) / sizeof(pins[0]);
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {

@@ -10,7 +10,7 @@ void printDiagnosticWarnings() {
     Serial.print("# WARNING: pin assignments are unconfirmed placeholders (see include/Defines/pindefs.h)\r\n");
 #endif
 #if DYNO_FAKE_INPUTS
-    Serial.print("# FAKE INPUTS: load cell is simulated (DYNO_FAKE_INPUTS=1), not reading the HX711\r\n");
+    Serial.print("# FAKE INPUTS: load cell and ECU CAN are simulated (DYNO_FAKE_INPUTS=1), not reading the HX711 or the CAN bus\r\n");
 #endif
 }
 

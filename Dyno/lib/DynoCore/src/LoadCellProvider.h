@@ -1,5 +1,5 @@
 // The only three things the acquirer needs from a load-cell chip. The real
-// HX711 (src/Hardware/Hx711Provider) and FakeLoadCellProvider implement it.
+// HX711 (lib/DynoHardware/Hx711Provider) and FakeLoadCellProvider implement it.
 #pragma once
 
 #include <stdint.h>

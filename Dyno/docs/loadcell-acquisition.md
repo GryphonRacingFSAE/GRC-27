@@ -8,7 +8,7 @@ The **load-cell task** is the only code that talks to the HX711. Every 5 ms it a
 
 ```
 HX711 ──► Hx711Provider ──► LoadCellAcquirer.step(now) ──► sample mailbox ──► (#35 calibration, #37 maths, …)
-           (src/Hardware)     (lib/DynoCore, host-tested)    (xQueuePeek)
+           (lib/DynoHardware) (lib/DynoCore, host-tested)    (xQueuePeek)
 ```
 
 The published `LoadCellSample` is:
@@ -50,7 +50,7 @@ We use **`bogde/HX711@0.7.5`** (pinned in `platformio.ini`). Several of its func
 | `read()` | Yes, **only right after `is_ready()` returned true** | Internally it waits until the chip is ready. Since we have already checked, that wait is instant. It disables interrupts for about 50–60 µs while clocking the bits out. |
 | `wait_ready()`, `read_average()`, `get_value()`, `get_units()`, `tare()` | **Never** | Each one waits with no time limit. |
 
-Two other details are handled in `src/Hardware/Hx711Provider.cpp`:
+Two other details are handled in `lib/DynoHardware/Hx711Provider.cpp`:
 
 - **Pull-up on DOUT.** On ESP chips the library leaves the data pin floating. A floating pin attached to an unplugged sensor can read as LOW, which means "ready", and the code would then read garbage. We turn on the ESP32's internal pull-up after `begin()`. An unplugged sensor then reads HIGH ("not ready"), which leads to timeouts and then `Fault`.
 - **Power-cycle.** `power_down()` raises the clock pin, and the chip only switches off after the pin has been high for more than 60 µs. We hold it for 100 µs before `power_up()`. The chip wakes on channel A at gain 128, which is the gain we use, so a power-cycle never changes the gain.
@@ -83,11 +83,11 @@ pio test -e native -f test_loadcell
 pio run -e esp32-s3-fake -t upload && pio device monitor
 ```
 
-This builds with `DYNO_FAKE_INPUTS=1`. Instead of the HX711, the load-cell task uses a scripted fake: an 80 Hz ramp of 1000 counts/s from 0, a 3 s "unplug" from 27 s to 30 s, repeating every 30 s. You should see `raw` climb, then `status=Fault` about 0.5 s after the 27 s mark, then `Valid` again from 0 at 30 s. The board prints `# FAKE INPUTS` at boot and every 10 s.
+This builds with `DYNO_FAKE_INPUTS=1` (which also fakes the ECU; see [can-decoding.md](can-decoding.md)). Instead of the HX711, the load-cell task uses a scripted fake: an 80 Hz ramp of 1000 counts/s from 0, a 3 s "unplug" from 27 s to 30 s, repeating every 30 s. You should see `raw` climb, then `status=Fault` about 0.5 s after the 27 s mark, then `Valid` again from 0 at 30 s. The board prints `# FAKE INPUTS` at boot and every 10 s.
 
 ## Serial monitor output (temporary, until #38)
 
-While `DYNO_LOADCELL_MONITOR` is 1 (the default for now), a small task prints the mailbox twice a second:
+While `DYNO_SERIAL_MONITOR` is 1 (the default for now), a small task (`MonitorTask`) prints the mailbox twice a second, together with the CAN lines described in [can-decoding.md](can-decoding.md):
 
 ```
 # loadcell raw=84213 t=51230 status=Valid timeouts=0 faults=0 recoveries=0 samples=4098

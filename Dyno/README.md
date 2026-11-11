@@ -11,16 +11,20 @@ Run these from this folder (`GRC-27/Dyno/`, where `platformio.ini` is):
 | `pio test -e native` | Runs the host tests on your computer (Unity, with AddressSanitizer/UBSan) | None |
 | `pio run` | Builds the ESP32-S3 firmware | None |
 | `pio run -t upload && pio device monitor` | Flashes the board and opens the serial monitor (115200 baud) | Dyno board |
-| `pio run -e esp32-s3-fake -t upload && pio device monitor` | Same, but with a simulated load cell (`DYNO_FAKE_INPUTS=1`) | Any ESP32-S3 devkit |
+| `pio run -e esp32-s3-fake -t upload && pio device monitor` | Same, but with a simulated load cell and ECU (`DYNO_FAKE_INPUTS=1`) | Any ESP32-S3 devkit |
+| `pio test -e esp32-s3-devboard -f test_device_can_loopback` | On-device CAN self-test of the real driver (add `--without-uploading --without-testing` to only build it) | ESP32-S3 devkit + 1 jumper wire |
 
 Layout:
-- `lib/DynoCore/`: hardware-free logic (load-cell acquisition, fakes). Builds for both the ESP32 and the host tests.
-- `src/`: ESP32-only code (FreeRTOS tasks, hardware adapters).
+- `lib/DynoCore/`: hardware-free logic (load-cell acquisition, ECU CAN decoding and reception, fakes). Builds for both the ESP32 and the host tests.
+- `lib/DynoHardware/`: ESP32-only adapters (HX711, TWAI CAN) behind DynoCore's interfaces.
+- `src/`: ESP32-only code (FreeRTOS tasks).
 - `include/Defines/pindefs.h`: pin numbers. **Placeholders until confirmed** (`DYNO_PINS_CONFIRMED`).
-- `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries).
-- `test/test_*/`: host test suites.
+- `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries, CAN bitrate and freshness).
+- `lib/DynoCore/src/EcuSignals.h`: our copy of the DBC (which ECU signals are decoded and how).
+- `test/test_*/`: host test suites. `test/test_device_*/`: on-device tests (need a devkit).
 - `docs/`: how each part works, plus hardware checklists.
 
 ## Docs
 
 - [Load-cell acquisition (HX711)](docs/loadcell-acquisition.md): timing, library pitfalls, fake inputs, hardware checklist.
+- [ECU CAN decoding](docs/can-decoding.md): signals, received vs fresh, driver mode, fake ECU sequence, hardware checklist.
