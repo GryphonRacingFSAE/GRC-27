@@ -11,9 +11,16 @@ Run these from this folder (`GRC-27/Dyno/`, where `platformio.ini` is):
 | `pio test -e native` | Runs the host tests on your computer (Unity, with AddressSanitizer/UBSan) | None |
 | `pio run` | Builds the ESP32-S3 firmware | None |
 | `pio run -t upload && pio device monitor` | Flashes the board and opens the serial monitor (115200 baud) | Dyno board |
+| `pio run -e esp32-s3-fake -t upload && pio device monitor` | Same, but with a simulated load cell (`DYNO_FAKE_INPUTS=1`) | Any ESP32-S3 devkit |
 
 Layout:
+- `lib/DynoCore/`: hardware-free logic (load-cell acquisition, fakes). Builds for both the ESP32 and the host tests.
 - `src/`: ESP32-only code (FreeRTOS tasks, hardware adapters).
 - `include/Defines/pindefs.h`: pin numbers. **Placeholders until confirmed** (`DYNO_PINS_CONFIRMED`).
 - `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries).
 - `test/test_*/`: host test suites.
+- `docs/`: how each part works, plus hardware checklists.
+
+## Docs
+
+- [Load-cell acquisition (HX711)](docs/loadcell-acquisition.md): timing, library pitfalls, fake inputs, hardware checklist.
