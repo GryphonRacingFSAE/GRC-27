@@ -15,11 +15,11 @@ Run these from this folder (`GRC-27/Dyno/`, where `platformio.ini` is):
 | `pio test -e esp32-s3-devboard -f test_device_can_loopback` | On-device CAN self-test of the real driver (add `--without-uploading --without-testing` to only build it) | ESP32-S3 devkit + 1 jumper wire |
 
 Layout:
-- `lib/DynoCore/`: hardware-free logic (load-cell acquisition, ECU CAN decoding and reception, fakes). Builds for both the ESP32 and the host tests.
+- `lib/DynoCore/`: hardware-free logic (load-cell acquisition, ECU CAN decoding and reception, torque/power calculation, fakes). Builds for both the ESP32 and the host tests.
 - `lib/DynoHardware/`: ESP32-only adapters (HX711, TWAI CAN) behind DynoCore's interfaces.
 - `src/`: ESP32-only code (FreeRTOS tasks).
 - `include/Defines/pindefs.h`: pin numbers. **Placeholders until confirmed** (`DYNO_PINS_CONFIRMED`).
-- `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries, CAN bitrate and freshness).
+- `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries, CAN bitrate and freshness, torque/power limits) and the mechanical setup. **Geometry is a placeholder until confirmed** (`GEOMETRY_CONFIRMED`, `SAME_SHAFT_CONFIRMED`): torque/power stay invalid until then.
 - `lib/DynoCore/src/EcuSignals.h`: our copy of the DBC (which ECU signals are decoded and how).
 - `test/test_*/`: host test suites. `test/test_device_*/`: on-device tests (need a devkit).
 - `docs/`: how each part works, plus hardware checklists.
@@ -28,3 +28,4 @@ Layout:
 
 - [Load-cell acquisition (HX711)](docs/loadcell-acquisition.md): timing, library pitfalls, fake inputs, hardware checklist.
 - [ECU CAN decoding](docs/can-decoding.md): signals, received vs fresh, driver mode, fake ECU sequence, hardware checklist.
+- [Torque and power](docs/torque-power.md): formulas and units, validity rules, freshness/skew limits, sign and calibration-version handling, #38 result contract, mechanical setup note, hardware checklist.

@@ -2,8 +2,10 @@
 
 #include <API.h>
 #include <CanReceiver.h>
+#include <DynoCalcSetup.h>
 #include <DynoConfig.h>
 #include <LoadCellAcquirer.h>
+#include <TorquePower.h>
 #include <stdarg.h>
 #include <stdio.h>
 
@@ -138,6 +140,45 @@ static void printCan(const MonitorTaskParams* params, uint32_t (&prev_frames)[kE
     Serial.print(line);
 }
 
+// "# calc torque_nm=25.000 power_w=1570.8 kw=1.571 hp=2.106 reverse_torque=0 versions=2/3 force_ts_ms=.. rpm_ts_ms=.."
+// An invalid value prints as "-(Reason)".
+static void printCalc(const MonitorTaskParams* params) {
+    EcuState ecu;
+    xQueuePeek(params->ecuMailbox, &ecu, 0);
+    // No calibrated force exists until #35 (calibration) produces one, so
+    // force is honestly "unavailable" here: torque/power read ForceUnavailable.
+    const ForceMeasurement force;
+    const uint32_t now_ms = millis(); // after the peek, so ages are never negative
+
+    const TorquePowerResult r =
+        computeTorquePower(force, engineSpeedFromEcu(ecu), dynoMechanicalSetup(), dynoCalcLimits(), now_ms);
+
+    char line[256];
+    size_t len = append(line, sizeof(line), 0, "# calc");
+    if (r.torque.valid) {
+        len = append(line, sizeof(line), len, " torque_nm=%.3f", r.torque.torque_nm);
+    } else {
+        len = append(line, sizeof(line), len, " torque_nm=-(%s)", calcReasonName(r.torque.reason));
+    }
+    if (r.power.valid) {
+        len = append(line, sizeof(line), len, " power_w=%.1f kw=%.3f hp=%.3f", r.power.power_w, r.power.power_kw,
+                     r.power.horsepower_hp);
+    } else {
+        len = append(line, sizeof(line), len, " power_w=-(%s)", calcReasonName(r.power.reason));
+    }
+    len = append(line, sizeof(line), len, " reverse_torque=%d", r.reverse_torque ? 1 : 0);
+    if (r.versions_known) {
+        len = append(line, sizeof(line), len, " versions=%lu/%lu", static_cast<unsigned long>(r.calibration_version),
+                     static_cast<unsigned long>(r.tare_version));
+    } else {
+        len = append(line, sizeof(line), len, " versions=-");
+    }
+    len = append(line, sizeof(line), len, " force_ts_ms=%lu rpm_ts_ms=%lu", static_cast<unsigned long>(r.force_timestamp_ms),
+                 static_cast<unsigned long>(r.rpm_timestamp_ms));
+    append(line, sizeof(line), len, "\r\n");
+    Serial.print(line);
+}
+
 void MonitorTask(void* pvParameters) {
     const MonitorTaskParams* params = static_cast<const MonitorTaskParams*>(pvParameters);
 
@@ -150,6 +191,7 @@ void MonitorTask(void* pvParameters) {
         printLoadCell(params);
         printEcu(params);
         printCan(params, prev_frames, prev_can_ms);
+        printCalc(params);
 
         // Boot messages are often missed (USB serial connects late): repeat them.
         const uint32_t now_ms = millis();

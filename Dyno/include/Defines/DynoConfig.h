@@ -36,6 +36,33 @@ static_assert(CAN_FRESHNESS_MS > CAN_RX_TIMEOUT_MS + CAN_IDLE_DELAY_MS,
               "DynoConfig.h: CAN freshness must be longer than one receive loop");
 
 // ----------------------------------------------------------------------------
+// Mechanical setup for torque/power (#37). See docs/torque-power.md.
+//
+// TBD: NOT measured yet. Ask the mechanical team for the setup note in
+// docs/torque-power.md, then change the numbers and flip the flags. No other
+// code changes are needed. Until a flag is true, the result that depends on
+// it is INVALID with a reason (never a convincing-looking guess):
+//   GEOMETRY_CONFIRMED   = false -> no torque and no power
+//   SAME_SHAFT_CONFIRMED = false -> no power (torque can still be valid)
+// ----------------------------------------------------------------------------
+static constexpr bool   GEOMETRY_CONFIRMED   = false; // TBD: arm and force direction measured
+static constexpr double EFFECTIVE_ARM_M      = 0.0;   // TBD: METRES, perpendicular from shaft axis to the load cell's line of force
+static constexpr bool   SAME_SHAFT_CONFIRMED = false; // TBD: ECU engine RPM is the shaft the load cell measures
+
+// Limits (valid now; retune on hardware). If changed, rework the boundary
+// rows in lib/DynoCore/src/TorquePowerExamples.h (test_config checks they match).
+static constexpr uint32_t FORCE_FRESHNESS_MS  = 500;  // force usable while age < this (10 Hz = 100 ms/sample; Fault after ~450 ms)
+static constexpr uint32_t MAX_SOURCE_SKEW_MS  = 250;  // force and RPM timestamps at most this far apart for power
+static constexpr double   EFFECTIVE_ARM_MAX_M = 2.0;  // typo guard: a longer "arm" is rejected (e.g. 250 mm typed as 250)
+
+static_assert(EFFECTIVE_ARM_MAX_M > 0.0, "DynoConfig.h: the arm limit must be positive");
+static_assert(!GEOMETRY_CONFIRMED || (EFFECTIVE_ARM_M > 0.0 && EFFECTIVE_ARM_M <= EFFECTIVE_ARM_MAX_M),
+              "DynoConfig.h: GEOMETRY_CONFIRMED needs a real EFFECTIVE_ARM_M in metres (0 < arm <= EFFECTIVE_ARM_MAX_M)");
+static_assert(FORCE_FRESHNESS_MS > 100, "DynoConfig.h: force freshness must cover a 10 Hz HX711 sample period");
+static_assert(MAX_SOURCE_SKEW_MS > 0 && MAX_SOURCE_SKEW_MS < CAN_FRESHNESS_MS,
+              "DynoConfig.h: source skew limit must be positive and shorter than the CAN freshness");
+
+// ----------------------------------------------------------------------------
 // Build switches. Override from platformio.ini with -D<NAME>=0/1.
 // ----------------------------------------------------------------------------
 #ifndef DYNO_FAKE_INPUTS
