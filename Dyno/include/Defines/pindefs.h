@@ -14,9 +14,16 @@ static constexpr int PIN_HX711_SCK  = 15;  // TBD (GRC26 "STRAIN_AMP_CLK")
 static constexpr int PIN_CAN_TX     = 40;  // TBD (GRC26 Dyno; to the transceiver's TXD)
 static constexpr int PIN_CAN_RX     = 41;  // TBD (GRC26 Dyno; from the transceiver's RXD)
 
+// Operator tare button (#36). TBD: GPIO0 is the devkit's BOOT button, so the
+// feature works on a bare devkit; move it to the proto board's button pin.
+// GPIO0 is a strapping pin: held down at power-on, the chip starts in
+// download mode instead of running (see docs/calibration.md).
+static constexpr int  PIN_TARE_BUTTON        = 0;     // TBD (devkit BOOT button)
+static constexpr bool TARE_BUTTON_ACTIVE_LOW = true;  // TBD: true = button to GND, internal pull-up; false = to 3.3 V, pull-down
+
 // Add every new pin to this list so clashes fail the build.
 constexpr bool dynoPinsAreDistinct() {
-    constexpr int pins[] = {PIN_HX711_DOUT, PIN_HX711_SCK, PIN_CAN_TX, PIN_CAN_RX};
+    constexpr int pins[] = {PIN_HX711_DOUT, PIN_HX711_SCK, PIN_CAN_TX, PIN_CAN_RX, PIN_TARE_BUTTON};
     constexpr int n = sizeof(pins) / sizeof(pins[0]);
     for (int i = 0; i < n; ++i) {
         for (int j = i + 1; j < n; ++j) {

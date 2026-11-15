@@ -6,7 +6,10 @@
 #include "CalibrationExamples.h"
 #include "DynoCalcSetup.h"
 #include "DynoCalibrationSetup.h"
+#include "FakeButton.h"
+#include "FakeCommands.h"
 #include "LineReader.h"
+#include "TareButtonExamples.h"
 #include "DynoConfig.h"
 #include "TorquePower.h"
 #include "TorquePowerExamples.h"
@@ -82,6 +85,60 @@ static void test_command_line_fits_the_longest_command() {
     TEST_ASSERT_GREATER_OR_EQUAL_UINT32(strlen("cal loaded 1234.567kg") + 8, LineReader::kMaxLine);
 }
 
+// ---------------------------------------------------------------------------
+// Tare button (#36)
+
+// The button pin must be one an ESP32-S3 can read as a plain input while
+// the firmware runs: not a GPIO that doesn't exist (22-25, > 48), not the
+// flash/PSRAM pins (26-32; on boards with octal PSRAM also 33-37), and not
+// the USB pins (19/20, used by the serial monitor). GPIO0 (the devkit's
+// BOOT button) is allowed, but see docs/calibration.md: held at power-on it
+// starts the chip in download mode instead of running the firmware.
+static void test_tare_button_pin_is_a_usable_input() {
+    TEST_ASSERT_TRUE(PIN_TARE_BUTTON >= 0 && PIN_TARE_BUTTON <= 48);
+    TEST_ASSERT_FALSE_MESSAGE(PIN_TARE_BUTTON >= 22 && PIN_TARE_BUTTON <= 25, "GPIO22-25 don't exist on the S3");
+    TEST_ASSERT_FALSE_MESSAGE(PIN_TARE_BUTTON >= 26 && PIN_TARE_BUTTON <= 37, "GPIO26-37: flash/PSRAM");
+    TEST_ASSERT_FALSE_MESSAGE(PIN_TARE_BUTTON == 19 || PIN_TARE_BUTTON == 20, "GPIO19/20: USB serial");
+}
+
+// The debounce must span at least two button polls, or a single noisy poll
+// could count as a press; and stay short enough that a quick tap counts and
+// the reply feels immediate.
+static void test_tare_debounce_spans_two_polls_and_stays_quick() {
+    TEST_ASSERT_GREATER_OR_EQUAL_UINT32(2 * COMMAND_POLL_INTERVAL_MS, TARE_DEBOUNCE_MS);
+    TEST_ASSERT_LESS_OR_EQUAL_UINT32(150, TARE_DEBOUNCE_MS);
+}
+
+// test_tare_button and test_calibration_pipeline are hand-worked with the
+// fixture in TareButtonExamples.h. A retune of the real settings fails here
+// first; rework those tests' timings, then the fixture.
+static void test_tare_button_fixture_matches_config() {
+    const TareButtonConfig real = dynoTareButtonConfig();
+    TEST_ASSERT_EQUAL(kExampleTareButtonConfig.active_low, real.active_low);
+    TEST_ASSERT_EQUAL_UINT32(kExampleTareButtonConfig.debounce_ms, real.debounce_ms);
+}
+
+// The firmware's settings through the real TareButton: the pin idling at
+// its pull level is "released", and pulling it the other way for 100 ms
+// (a quick tap), polled every COMMAND_POLL_INTERVAL_MS, sends one Tare.
+static void test_a_quick_tap_tares_with_the_real_settings() {
+    FakeButton pin;
+    FakeCommandSink sink;
+    FakeReplies replies;
+    TareButton button(pin, sink, replies, dynoTareButtonConfig());
+    const bool idle_high = TARE_BUTTON_ACTIVE_LOW; // pull-up idles HIGH, pull-down LOW
+    uint32_t t = 0;
+    pin.high = idle_high;
+    for (; t < 1000; t += COMMAND_POLL_INTERVAL_MS) button.step(t);
+    TEST_ASSERT_EQUAL_UINT32(0, sink.queued.size());
+    pin.high = !idle_high;
+    for (; t < 1100; t += COMMAND_POLL_INTERVAL_MS) button.step(t);
+    pin.high = idle_high;
+    for (; t < 2000; t += COMMAND_POLL_INTERVAL_MS) button.step(t);
+    TEST_ASSERT_EQUAL_UINT32(1, sink.queued.size());
+    TEST_ASSERT_EQUAL_UINT32(1, sink.count(CommandKind::Tare));
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_all_dyno_pins_are_distinct);
@@ -91,5 +148,9 @@ int main() {
     RUN_TEST(test_calibration_fixture_matches_config);
     RUN_TEST(test_calibration_window_fits_the_sample_buffer);
     RUN_TEST(test_command_line_fits_the_longest_command);
+    RUN_TEST(test_tare_button_pin_is_a_usable_input);
+    RUN_TEST(test_tare_debounce_spans_two_polls_and_stays_quick);
+    RUN_TEST(test_tare_button_fixture_matches_config);
+    RUN_TEST(test_a_quick_tap_tares_with_the_real_settings);
     return UNITY_END();
 }

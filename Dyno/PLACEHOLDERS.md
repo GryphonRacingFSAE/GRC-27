@@ -4,7 +4,7 @@ Every value in the Dyno firmware that is a stand-in until we get the real number
 
 **Keep this file current.** When you add a placeholder or TBD value, add a row here in the same commit. When you replace one with the real value, move its row to "Resolved" at the bottom with the date and where the value came from.
 
-Line numbers were last checked on 2026-11-15 (branch `feature/dyno-code-T5`). If a line has moved, search the file for the name.
+Line numbers were last checked on 2026-11-15 (branch `feature/dyno-code-T6`). If a line has moved, search the file for the name.
 
 ## 1. Blocking: the firmware deliberately won't produce real output until these are filled in
 
@@ -12,11 +12,13 @@ These are guarded by a "confirmed" flag. While the flag is off, the output that 
 
 | What | File:line | Current value | What we need | What it's for |
 |---|---|---|---|---|
-| `DYNO_PINS_CONFIRMED` | `include/Defines/pindefs.h:10` | `0` | Set to `1` after checking all four pins below against the GRC27 Dyno board schematic | Turns off the "pins unconfirmed" warning. Only flip it once every pin below is checked. |
+| `DYNO_PINS_CONFIRMED` | `include/Defines/pindefs.h:10` | `0` | Set to `1` after checking all five pins below against the GRC27 Dyno board schematic | Turns off the "pins unconfirmed" warning. Only flip it once every pin below is checked. |
 | `PIN_HX711_DOUT` | `include/Defines/pindefs.h:12` | `16` (copied from GRC26) | GPIO number for the HX711 data pin on the GRC27 board (from the electrical team / schematic) | Reading the load cell amplifier |
 | `PIN_HX711_SCK` | `include/Defines/pindefs.h:13` | `15` (copied from GRC26) | GPIO number for the HX711 clock pin on the GRC27 board | Reading the load cell amplifier |
 | `PIN_CAN_TX` | `include/Defines/pindefs.h:14` | `40` (copied from GRC26) | GPIO wired to the CAN transceiver's TXD pin on the GRC27 board | Talking on the ECU CAN bus |
 | `PIN_CAN_RX` | `include/Defines/pindefs.h:15` | `41` (copied from GRC26) | GPIO wired to the CAN transceiver's RXD pin on the GRC27 board | Receiving ECU data (RPM, lambda, temps, …) |
+| `PIN_TARE_BUTTON` | `include/Defines/pindefs.h:21` | `0` (the devkit's BOOT button, for bench testing) | The tare-button GPIO on the proto board. Avoid strapping pins (0, 3, 45, 46): GPIO0 held at power-up stops the firmware running. `test_config` rejects pins that can't work. | The operator's tare button (#36). Not blocking: typing `tare` does the same. |
+| `TARE_BUTTON_ACTIVE_LOW` | `include/Defines/pindefs.h:22` | `true` (button to GND, internal pull-up) | How the button is wired on the proto board (`false` = to 3.3 V, internal pull-down) | Whether a press reads LOW or HIGH. Backwards = the button tares on release. |
 | `GEOMETRY_CONFIRMED` | `include/Defines/DynoConfig.h:48` | `false` | Set to `true` once `EFFECTIVE_ARM_M` is measured and the force direction is known (mechanical team) | While `false`: no torque and no power |
 | `EFFECTIVE_ARM_M` | `include/Defines/DynoConfig.h:49` | `0.0` | The **perpendicular** distance from the shaft's centre to the load cell's line of force, **in metres** (mechanical team). Must be > 0 and ≤ 2 m or the build fails. | Torque = force × arm. Without it there is no torque. |
 | `SAME_SHAFT_CONFIRMED` | `include/Defines/DynoConfig.h:50` | `false` | Confirmation that the load cell measures the engine crank (no belt/gearbox in between), checked with a tachometer against the CSV `rpm` column | While `false`: no power (torque can still be valid). Power uses ECU engine RPM, which is only right if it's the same shaft. |
@@ -29,7 +31,7 @@ These have a working value now; the team just hasn't agreed on the final one.
 
 | What | File:line | Current value | What we need | What it's for |
 |---|---|---|---|---|
-| `CSV_ROW_INTERVAL_MS` | `include/Defines/DynoConfig.h:118` | `100` ms (10 rows/s) | The team to choose how many CSV rows per second they want. Allowed range 20–1000 ms (the build refuses anything else, or anything the serial speed can't carry). | How often a data row is printed over serial for logging. See `docs/csv-output.md:16`. |
+| `CSV_ROW_INTERVAL_MS` | `include/Defines/DynoConfig.h:125` | `100` ms (10 rows/s) | The team to choose how many CSV rows per second they want. Allowed range 20–1000 ms (the build refuses anything else, or anything the serial speed can't carry). | How often a data row is printed over serial for logging. See `docs/csv-output.md:16`. |
 | Accepted calibration error | `docs/calibration.md`, "Hardware checklist (#35)" step 5 | none set | The team to choose how far a calibrated reading may be from a known load (e.g. ±1% or ±0.5 N) before the calibration counts as failed | Pass/fail line for the expected-vs-measured table |
 
 ## 3. First guesses to retune at the first hardware session
@@ -47,6 +49,7 @@ These are reasonable defaults that already work. They aren't wrong, but they wer
 | `CAL_MAX_SPREAD_COUNTS` | `include/Defines/DynoConfig.h:78` | `500` counts | ~3× the measured unloaded max − min with the load cell mounted (`docs/calibration.md` checklist step 3). Same fixture rule. | When a reading counts as settled. Too low: calibration always `Unstable`; too high: accepts a swinging weight |
 | `CAL_TIMEOUT_MS` | `include/Defines/DynoConfig.h:79` | `10000` ms | Check it's long enough to hang the weight and let it settle on the real rig. Same fixture rule. | When a calibration/tare step gives up |
 | `CAL_MIN_SEPARATION_COUNTS` | `include/Defines/DynoConfig.h:81` | `5000` counts | Well under (reference load in N × measured counts/N). Needs the real load cell and the reference weight we'll use. Same fixture rule. | Rejects a calibration where the weight barely changed the reading |
+| `TARE_DEBOUNCE_MS` | `include/Defines/DynoConfig.h:108` | `50` ms | The real button's bounce, measured by `test_device_tare_button` (`docs/calibration.md` checklist step 13). Must stay 40–150 ms (build check). If changed, update `lib/DynoCore/src/TareButtonExamples.h` (`test_config` fails until they match). | How long a press must last to count |
 | `LOADCELL_SATURATION_COUNTS` | `include/Defines/DynoConfig.h:84` | `8388000` | Nothing to measure: it's near the HX711's ±8,388,607 limit. Check on hardware that unplugging the bridge wires trips it (`docs/calibration.md` checklist step 8d). Same fixture rule. | Rejects readings where the amplifier is maxed out |
 
 ## 4. Waiting on hardware or another ticket (not a number)
@@ -57,12 +60,7 @@ These are reasonable defaults that already work. They aren't wrong, but they wer
 
 ## 5. Planned: not in the code yet (from `DYNO_PLAN.md`)
 
-These will be added by upcoming tickets. When a ticket adds one, move it into the right section above with its real file:line.
-
-| What | Planned for | Planned value | What we need | What it's for |
-|---|---|---|---|---|
-| `PIN_TARE_BUTTON` (`pindefs.h`) | #36 | `0` (GPIO0 = the devkit BOOT button, handy for bench testing) | The real tare-button GPIO on the GRC27 board. Add it to the pin clash list. | The push button that zeroes the load cell |
-| `TARE_BUTTON_ACTIVE_LOW` (`pindefs.h`) | #36 | `true` (uses INPUT_PULLUP) | How the button is wired on the board | Whether a press reads as LOW or HIGH |
+Nothing planned right now. When a ticket plans a new placeholder, list it here until it is in the code.
 
 ## Resolved
 

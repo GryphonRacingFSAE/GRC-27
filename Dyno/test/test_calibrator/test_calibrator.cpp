@@ -10,6 +10,7 @@
 
 #include "CalibrationExamples.h"
 #include "FakeCalibrationStore.h"
+#include "FakeCommands.h"
 #include "LoadCellCalibrator.h"
 
 void setUp() {}
@@ -18,18 +19,6 @@ void tearDown() {}
 // 1 s window, >= 8 samples, spread <= 500, 10 s timeout, saturated at
 // 8388000; 5000-count minimum separation.
 static const CalibratorConfig kConfig = kExampleCalibratorConfig;
-
-struct Replies : CalibrationReplies {
-    std::vector<std::string> lines;
-    void reply(const char* text) override { lines.push_back(text); }
-    bool any(const char* fragment) const {
-        for (const std::string& l : lines) {
-            if (l.find(fragment) != std::string::npos) return true;
-        }
-        return false;
-    }
-    std::string last() const { return lines.empty() ? "" : lines.back(); }
-};
 
 static LoadCellSample valid(int32_t raw, uint32_t t) {
     LoadCellSample s;
@@ -74,7 +63,7 @@ static void calibrateWorkedExample(LoadCellCalibrator& cal) {
 // plausible 0 N.
 static void test_boot_with_nothing_stored_is_not_calibrated() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
 
@@ -92,7 +81,7 @@ static void test_boot_with_nothing_stored_is_not_calibrated() {
 // 110000 then reads 50 N. First calibration: both counters go 0 -> 1.
 static void test_worked_example_calibration_is_accepted_and_saved() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -136,7 +125,7 @@ static void assertReadsWorkedExample(LoadCellCalibrator& cal, uint32_t t) {
 // exists, including the wait while the operator hangs the load.
 static void test_not_ready_for_the_whole_procedure() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -166,12 +155,12 @@ static void test_not_ready_for_the_whole_procedure() {
 static void test_reboot_restores_the_saved_calibration() {
     FakeCalibrationStore store;
     {
-        Replies replies;
+        FakeReplies replies;
         LoadCellCalibrator cal(store, replies, kConfig);
         cal.begin();
         calibrateWorkedExample(cal);
     }
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator rebooted(store, replies, kConfig);
     rebooted.begin();
     TEST_ASSERT_TRUE(rebooted.bootStatus() == StoreLoad::Ok);
@@ -189,7 +178,7 @@ static void test_reboot_restores_the_saved_calibration() {
 // counters advance once more, and 90000 then reads +50 N.
 static void test_recalibration_advances_both_counters() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -210,7 +199,7 @@ static void test_recalibration_advances_both_counters() {
 // writes are about to go wrong. It must be rejected: the worked example stays
 // active and is what a reboot finds.
 static void assertFailedSaveKeepsWorkedExample(FakeCalibrationStore& store, LoadCellCalibrator& cal,
-                                               Replies& replies) {
+                                               FakeReplies& replies) {
     type(cal, "cal unloaded", 7000);
     feed(cal, 7000, 8000, 100, 100000);
     type(cal, "cal loaded 100N", 9000);
@@ -224,7 +213,7 @@ static void assertFailedSaveKeepsWorkedExample(FakeCalibrationStore& store, Load
     assertReadsWorkedExample(cal, 10100);
 
     store.fail_writes = false;
-    Replies boot_replies;
+    FakeReplies boot_replies;
     LoadCellCalibrator rebooted(store, boot_replies, kConfig);
     rebooted.begin();
     TEST_ASSERT_EQUAL_STRING("Ok", storeLoadName(rebooted.bootStatus()));
@@ -233,7 +222,7 @@ static void assertFailedSaveKeepsWorkedExample(FakeCalibrationStore& store, Load
 
 static void test_a_write_that_fails_rejects_the_calibration() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -247,7 +236,7 @@ static void test_a_write_that_fails_rejects_the_calibration() {
 // record, 3 the previous record again.
 static void test_a_write_that_reads_back_wrong_rejects_the_calibration() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -261,7 +250,7 @@ static void test_a_write_that_reads_back_wrong_rejects_the_calibration() {
 static void test_a_failed_first_save_leaves_the_rig_uncalibrated() {
     FakeCalibrationStore store;
     store.fail_writes = true;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -286,7 +275,7 @@ static void assertUnchangedAfterRejection(FakeCalibrationStore& store, LoadCellC
 // loaded - unloaded = 4999 counts < 5000: too close to tell from noise.
 static void test_too_little_separation_is_rejected() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -302,7 +291,7 @@ static void test_too_little_separation_is_rejected() {
 // 10 s timeout, counted from "cal loaded".
 static void test_an_unstable_loaded_reading_times_out() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -322,7 +311,7 @@ static void test_an_unstable_loaded_reading_times_out() {
 // nothing to pair with.
 static void test_a_saturated_unloaded_reading_ends_the_procedure() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -338,7 +327,7 @@ static void test_a_saturated_unloaded_reading_ends_the_procedure() {
 
 static void test_a_sensor_fault_while_collecting_fails_at_once() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -355,7 +344,7 @@ static void test_a_sensor_fault_while_collecting_fails_at_once() {
 // Commands at the wrong moment are refused with a reply and change nothing.
 static void test_commands_out_of_order_are_refused() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
 
@@ -379,7 +368,7 @@ static void test_commands_out_of_order_are_refused() {
 // calibration is back in use straight away.
 static void test_cancel_abandons_the_procedure() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -412,7 +401,7 @@ static void test_cancel_abandons_the_procedure() {
 // calibration itself is still fine, so calibration_ready stays 1.
 static void test_no_force_without_a_valid_sample() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -441,7 +430,7 @@ static void test_no_force_without_a_valid_sample() {
 // (111000 - 101000) / 200 = 50 N.
 static void test_tare_replaces_only_the_offset() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -474,7 +463,7 @@ static void test_tare_replaces_only_the_offset() {
 static void test_tare_is_not_saved_and_a_reboot_brings_back_the_calibration_zero() {
     FakeCalibrationStore store;
     {
-        Replies replies;
+        FakeReplies replies;
         LoadCellCalibrator cal(store, replies, kConfig);
         cal.begin();
         calibrateWorkedExample(cal);
@@ -483,7 +472,7 @@ static void test_tare_is_not_saved_and_a_reboot_brings_back_the_calibration_zero
         TEST_ASSERT_TRUE(replies.any("not saved"));
         TEST_ASSERT_EQUAL_UINT32(1, store.writes);
     }
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator rebooted(store, replies, kConfig);
     rebooted.begin();
     TEST_ASSERT_EQUAL_DOUBLE(100000.0, rebooted.active().offset_counts);
@@ -493,7 +482,7 @@ static void test_tare_is_not_saved_and_a_reboot_brings_back_the_calibration_zero
 // With no calibration there is no scale for a zero to belong to.
 static void test_tare_before_any_calibration_is_refused() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     type(cal, "tare", 0);
@@ -504,7 +493,7 @@ static void test_tare_before_any_calibration_is_refused() {
 
 static void test_a_failed_tare_keeps_the_old_zero() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -519,7 +508,7 @@ static void test_a_failed_tare_keeps_the_old_zero() {
 // A tare can't start in the middle of a calibration, and vice versa.
 static void test_tare_and_calibration_do_not_overlap() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
@@ -545,7 +534,7 @@ static void test_tare_and_calibration_do_not_overlap() {
 
 static void test_status_reports_the_active_calibration() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     type(cal, "cal status", 0);
@@ -591,7 +580,7 @@ static void assertBootsUncalibrated(const std::vector<uint8_t>& bytes, const cha
     FakeCalibrationStore store;
     store.present = true;
     store.bytes = bytes;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     TEST_ASSERT_EQUAL_STRING(expected_status, storeLoadName(cal.bootStatus()));
@@ -613,7 +602,7 @@ static void test_an_undamaged_record_loads() {
     FakeCalibrationStore store;
     store.present = true;
     store.bytes = workedRecordBytes();
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     TEST_ASSERT_EQUAL_STRING("Ok", storeLoadName(cal.bootStatus()));
@@ -708,7 +697,7 @@ static void test_the_stored_layout_matches_the_documentation() {
 static void test_a_calibration_in_kilograms_records_mass_and_gravity() {
     FakeCalibrationStore store;
     {
-        Replies replies;
+        FakeReplies replies;
         LoadCellCalibrator cal(store, replies, kConfig);
         cal.begin();
         type(cal, "cal unloaded", 0);
@@ -717,7 +706,7 @@ static void test_a_calibration_in_kilograms_records_mass_and_gravity() {
         feed(cal, 2000, 3000, 100, 120000);
         TEST_ASSERT_TRUE(cal.calibrated());
     }
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator rebooted(store, replies, kConfig);
     rebooted.begin();
     const CalibrationRecord r = rebooted.active();
@@ -733,7 +722,7 @@ static void test_counters_wrap_around() {
     FakeCalibrationStore store;
     store.present = true;
     store.bytes = workedRecordBytes(0xFFFFFFFFu, 0xFFFFFFFEu);
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     type(cal, "tare", 0);
@@ -751,7 +740,7 @@ static void test_counters_wrap_around() {
 // the settings its version pair names: never a new offset with an old scale.
 static void test_every_force_matches_its_version_pair() {
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal(store, replies, kConfig);
     cal.begin();
     calibrateWorkedExample(cal);
