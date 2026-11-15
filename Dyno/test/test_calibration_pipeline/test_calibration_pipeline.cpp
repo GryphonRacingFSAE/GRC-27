@@ -3,7 +3,8 @@
 // LoadCellTask), into real CSV rows (takeSnapshot + formatCsvRow) every
 // 100 ms. Checks what the CSV shows before, during and after a calibration
 // and a tare, and that a row made before the tare keeps its old versions
-// even when printed after it.
+// even when printed after it. The tare button (#36) must give the same CSV
+// as typing "tare".
 #include <stdlib.h>
 #include <unity.h>
 
@@ -15,10 +16,14 @@
 #include "CommandParser.h"
 #include "CsvRow.h"
 #include "CsvSchema.h"
+#include "FakeButton.h"
 #include "FakeCalibrationStore.h"
+#include "FakeCommands.h"
 #include "FakeLoadCellProvider.h"
 #include "LoadCellAcquirer.h"
 #include "LoadCellCalibrator.h"
+#include "TareButton.h"
+#include "TareButtonExamples.h"
 #include "TorquePowerExamples.h"
 
 void setUp() {}
@@ -46,11 +51,6 @@ static SnapshotConfig fixtureConfig() {
     return c;
 }
 
-struct Replies : CalibrationReplies {
-    std::vector<std::string> lines;
-    void reply(const char* text) override { lines.push_back(text); }
-};
-
 // A printed row's cells by column name.
 static std::map<std::string, std::string> cellsOf(const OutputLine& line) {
     std::string body(line.text, line.length);
@@ -70,18 +70,36 @@ struct Rig {
     FakeLoadCellProvider cell{kScript};
     LoadCellAcquirer acq{cell, LoadCellAcquirerConfig{150, 3, 1000}};
     FakeCalibrationStore store;
-    Replies replies;
+    FakeReplies replies;
     LoadCellCalibrator cal{store, replies, kExampleCalibratorConfig};
     ForceMeasurement force; // the "mailbox"
     std::map<uint32_t, std::map<std::string, std::string>> rows; // by time made
+    std::map<uint32_t, std::string> printed;                     // the same rows, as bytes
+
+    // The tare button (#36): active-low, 50 ms debounce, polled every 20 ms,
+    // held down while button_from <= t < button_to.
+    FakeButton pin;
+    FakeCommandSink queue; // the load-cell command queue
+    TareButton button{pin, queue, replies, kExampleTareButtonConfig};
+    uint32_t button_from = UINT32_MAX, button_to = UINT32_MAX;
 
     // Runs from `from` to before `to`: a 5 ms task loop, a row every 100 ms.
     void run(uint32_t from, uint32_t to) {
         for (uint32_t t = from; t < to; t += 5) {
+            if (t % 20 == 0) {
+                pin.high = !(t >= button_from && t < button_to);
+                button.step(t);
+            }
+            for (const LoadCellCommand& c : queue.queued) cal.command(c, t);
+            queue.queued.clear();
             cell.setTime(t);
             acq.step(t);
             force = cal.step(acq.sample(), t);
-            if (t % 100 == 0) rows[t] = cellsOf(row(t));
+            if (t % 100 == 0) {
+                const OutputLine line = row(t);
+                rows[t] = cellsOf(line);
+                printed[t] = std::string(line.text, line.length);
+            }
         }
     }
 
@@ -168,8 +186,47 @@ static void test_calibration_and_tare_as_the_csv_shows_them() {
     TEST_ASSERT_TRUE(tare_ok);
 }
 
+// The same session with the tare done by the button instead of typing it.
+// Pressed at 9.94 s, the press is accepted at the 10.00 s poll (60 ms held,
+// first poll >= 50 ms), so the Tare reaches the calibrator at 10.0 s, the
+// moment "tare" was typed above. Every CSV row, 0 to 15 s, must then be the
+// same bytes: the button is just another way to send the same command.
+static void test_the_button_gives_the_same_csv_as_typing_tare() {
+    Rig typed;
+    typed.cal.begin();
+    typed.run(0, 1000);
+    typed.type("cal unloaded", 1000);
+    typed.run(1000, 4000);
+    typed.type("cal loaded 100N", 4000);
+    typed.run(4000, 10000);
+    typed.type("tare", 10000);
+    typed.run(10000, 15000);
+
+    Rig pressed;
+    pressed.button_from = 9940;
+    pressed.button_to = 10400;
+    pressed.cal.begin();
+    pressed.run(0, 1000);
+    pressed.type("cal unloaded", 1000);
+    pressed.run(1000, 4000);
+    pressed.type("cal loaded 100N", 4000);
+    pressed.run(4000, 15000);
+
+    TEST_ASSERT_EQUAL_UINT32(150, typed.printed.size());
+    TEST_ASSERT_EQUAL_UINT32(150, pressed.printed.size());
+    for (uint32_t t = 0; t < 15000; t += 100) {
+        char msg[32];
+        snprintf(msg, sizeof msg, "row at %lu ms", static_cast<unsigned long>(t));
+        TEST_ASSERT_EQUAL_STRING_MESSAGE(typed.printed.at(t).c_str(), pressed.printed.at(t).c_str(), msg);
+    }
+    // ...and it really was the button that tared (not a no-op on both sides).
+    TEST_ASSERT_EQUAL_UINT32(1, pressed.button.presses());
+    assertForce(pressed.rows.at(12500), "50.000", "1", "2");
+}
+
 int main() {
     UNITY_BEGIN();
     RUN_TEST(test_calibration_and_tare_as_the_csv_shows_them);
+    RUN_TEST(test_the_button_gives_the_same_csv_as_typing_tare);
     return UNITY_END();
 }

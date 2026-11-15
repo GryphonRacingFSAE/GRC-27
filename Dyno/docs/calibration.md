@@ -1,6 +1,6 @@
 # Load-cell calibration and tare
 
-How the dyno turns raw HX711 counts into newtons (issue #35): the serial commands, the stability rule, what is saved and how, and how to check it on hardware.
+How the dyno turns raw HX711 counts into newtons (issue #35), and the operator's tare button (#36): the serial commands, the stability rule, what is saved and how, and how to check it on hardware.
 
 ## What it does
 
@@ -13,17 +13,17 @@ You find them by reading the load cell twice: once **unloaded** and once with a 
 
 ```
 CommandTask ── LoadCellCommand ──► LoadCellTask ─────────────────► force mailbox ──► CsvTask (force_n, torque, power)
- (serial in)    (command queue)     LoadCellAcquirer → LoadCellCalibrator
-                                                         │  ▲
+ (serial in,    (command queue)     LoadCellAcquirer → LoadCellCalibrator
+ tare button)                                            │  ▲
                                           save / load    ▼  │
                                                      NVS (flash)
 ```
 
-- **CommandTask** reads what you type in the serial monitor, one line at a time, and checks it is a valid command. It never prints anything itself: its replies are `# cmd: ...` lines sent through `printDiagnostic()`, so OutputTask stays the only serial writer.
+- **CommandTask** reads what you type in the serial monitor, one line at a time, and checks it is a valid command. It also polls the **tare button** (#36) every 20 ms; a press queues the same `tare` command. It never prints anything itself: its replies are `# cmd: ...` lines sent through `printDiagnostic()`, so OutputTask stays the only serial writer.
 - **LoadCellTask** is still the only code that touches the HX711. It now also owns the **calibrator**. Every pass it hands the calibrator the latest sample, and the calibrator returns the force to publish. The calibrator never reads the HX711 itself and never waits.
 - The published `ForceMeasurement` carries the **calibration and tare versions it was computed with**. A force and its versions travel together through the mailbox, so a row can never pair a force with the wrong versions.
 
-Code: `lib/DynoCore/src/LoadCellCalibrator.*` (procedure), `StableWindow.*` (settling), `CalibrationMath.*` (formulas), `CalibrationRecordCodec.*` (stored format), `CommandParser.*` and `LineReader.*` (typed input). The ESP32-only parts are `lib/DynoHardware/src/PreferencesCalibrationStore.*` (flash) and `src/Tasks/CommandTask.cpp` (serial input).
+Code: `lib/DynoCore/src/LoadCellCalibrator.*` (procedure), `StableWindow.*` (settling), `CalibrationMath.*` (formulas), `CalibrationRecordCodec.*` (stored format), `CommandParser.*` and `LineReader.*` (typed input), `ButtonDebouncer.*` and `TareButton.*` (the button). The ESP32-only parts are `lib/DynoHardware/src/PreferencesCalibrationStore.*` (flash), `lib/DynoHardware/src/GpioButton.*` (the button pin) and `src/Tasks/CommandTask.cpp` (serial input and button polling).
 
 ## Commands
 
@@ -129,7 +129,35 @@ Every force carries two counters, printed in the CSV as `calibration_version` an
 
 **A tare is not saved** (team decision, 2026-11-09). After a reboot the offset goes back to the one measured during the last calibration. Tare again after every power-up. A consequence: `tare_version` also goes back to the saved value after a reboot, so the same `tare_version` number can appear in two boots with different zeros. Compare versions **within one boot** (one CSV header to the next).
 
-The tare button (#36) will send the same tare request.
+## Tare button (#36)
+
+A push button on the proto board does the same as typing `tare`. Press it once, firmly, with nothing hanging on the arm and the arm still. You see:
+
+```
+# button: tare pressed (presses=1 bounces=0)
+# tare: collecting; keep the arm still with nothing hanging on it
+# tare OK: offset=101000.0 counts calibration_version=1 tare_version=2 (not saved: tare again after a reboot)
+```
+
+The button only **sends the request**. The tare itself, and every refusal, is exactly the typed command's: `tare: refused, not calibrated` before a calibration, `tare: busy ...` during a calibration or while a tare is already collecting (an impatient second press), and `tare FAILED ...` if the reading won't settle. A press never changes anything on its own.
+
+How a press is recognised:
+
+- **Debounce.** A button's contacts flicker for a few ms when pressed or released ("bounce"). CommandTask reads the pin every 20 ms (`COMMAND_POLL_INTERVAL_MS`); a press counts once the pin has read "pressed" steadily for `TARE_DEBOUNCE_MS` (50 ms), timed from the last flicker. So a press is accepted 60–80 ms after the finger goes down.
+- **One tare per press.** Holding the button gives one tare, not one every 50 ms. Releasing does nothing. Press again for another tare.
+- **Held at power-up = ignored.** If the button reads pressed at the first poll (held during boot, stuck, or wired the other way round from `TARE_BUTTON_ACTIVE_LOW`), it does nothing until it has been released and pressed again. A stuck button can't keep taring.
+- **Counters.** `presses` is the number of accepted presses since boot. `bounces` counts level changes that were undone before lasting 50 ms (contact chatter or electrical noise). A few per press is normal; if it climbs with nobody touching the button, the wiring is picking up noise.
+- **Queue full.** If the command queue is full at that moment (only if several commands were typed at once), you get `# button: tare dropped (too many commands at once); press again`. The press is not saved for later, so nothing tares behind your back.
+
+Wiring (`include/Defines/pindefs.h`, both **TBD** until the proto board exists, see [PLACEHOLDERS.md](../PLACEHOLDERS.md)):
+
+| Setting | Now | Meaning |
+|---|---|---|
+| `PIN_TARE_BUTTON` | `0` | GPIO0, the devkit's **BOOT** button, so the feature works on a bare devkit. Change it to the proto board's button pin. |
+| `TARE_BUTTON_ACTIVE_LOW` | `true` | Button between the pin and GND; the ESP32's internal pull-up holds the pin HIGH when released. `false` = button to 3.3 V, internal pull-down. |
+| `TARE_DEBOUNCE_MS` (`DynoConfig.h`) | `50` | How long a press must last. The build refuses less than two polls (40 ms) or more than 150 ms. |
+
+> **GPIO0 warning.** GPIO0 is a *strapping pin*: if it is held LOW while the ESP32 powers up or resets, the chip starts in download (flashing) mode and the dyno firmware **does not run** (the monitor shows `waiting for download`). Don't hold the tare button during power-up while it is on GPIO0. When choosing the proto board's pin, prefer an ordinary GPIO (not 0, 3, 45 or 46, which are strapping pins; not 19/20, the USB serial; not 26–37, flash/PSRAM). `test_config` rejects the pins that can't work at all.
 
 ## What is saved, and boot
 
@@ -205,14 +233,18 @@ pio test -e native -f test_calibration            # formulas, worked example, si
 pio test -e native -f test_stable_window          # the stability rule (17 tests)
 pio test -e native -f test_command                # line reader + command parser (9 tests)
 pio test -e native -f test_calibrator             # the procedure with a fake store (30 tests)
-pio test -e native -f test_calibration_pipeline   # fake load cell → calibrator → CSV rows (1 test)
+pio test -e native -f test_calibration_pipeline   # fake load cell → calibrator → CSV rows, typed vs button (2 tests)
+pio test -e native -f test_button                 # button debouncing with a fake clock (11 tests)
+pio test -e native -f test_tare_button            # fake button → queue → real calibrator (11 tests)
 ```
 
 `test_calibrator` uses `FakeCalibrationStore`, which can fail writes or garble the next one. It covers: boot with a missing, damaged (bad magic, truncated, CRC mismatch, NaN/zero scale) or other-schema record; the worked example; `calibration_ready=0` for the whole procedure; reboot keeps the calibration; recalibration; a write failure and a garbled write (old record restored); separation too small; unstable timeout; saturation; sensor fault; commands out of order; cancel; tare (refused uncalibrated, busy, offset only, not saved); `cal status`; the record layout byte by byte; the CRC check value; kg; counter wrap; and that every force matches its version pair.
 
-`test_calibration_pipeline` runs a scripted 10 Hz rig through `cal unloaded`, `cal loaded 100N` and `tare`, and checks every CSV row: blank while calibrating, 100 N then 50 N under versions 1/1, blank during the tare, 50 N under 1/2 afterwards.
+`test_calibration_pipeline` runs a scripted 10 Hz rig through `cal unloaded`, `cal loaded 100N` and `tare`, and checks every CSV row: blank while calibrating, 100 N then 50 N under versions 1/1, blank during the tare, 50 N under 1/2 afterwards. It then runs the same session with the tare done by the **button**, and checks every CSV row is byte-for-byte the same as with the typed `tare`.
 
-**Not tested on the host** (no ESP32 there), so they're in the checklist below: the flash store (`PreferencesCalibrationStore`) and the serial reading in `CommandTask`.
+`test_button` scripts the pin level at each poll and works out every expected press time by hand: a clean press accepted at exactly 50 ms, holding doesn't repeat, two presses, contact chatter (timed from the last flicker), held at boot, a short release, a one-poll glitch, the `millis()` wrap after 49.7 days, a late poll, and both wirings. `test_tare_button` runs a fake button, a 4-slot queue and the real calibrator, polled and stepped like the two tasks: a press tares (and moves the zero), refused before calibration, busy during a calibration and during a tare, held 5 s = one tare, bounce counts in the line, held from boot never tares, active-high wiring, and a dropped press never tares later. `test_config` checks the button pin is a usable S3 input, the debounce spans two polls, and the real settings tap-to-tare.
+
+**Not tested on the host** (no ESP32 there), so they're in the checklist below: the flash store (`PreferencesCalibrationStore`), the serial reading in `CommandTask`, and the button pin (`GpioButton`: the pin number, its pull resistor, real bounce). `test_device_tare_button` checks the button pin on a devkit (below).
 
 ## Hardware checklist (#35)
 
@@ -266,6 +298,16 @@ Use at least one load that is **not** the reference (the issue asks for independ
 
 Also write down, with the results: the date, who did it, which reference mass was used (and its certified or weighed value), the direction it was hung, and the `cal OK` line. The stored record keeps the numbers (reference, readings, versions), not free-text notes, so these notes live here and in the PR.
 
+### Tare button (#36)
+
+13. **Tare button (#36).** First on a bare devkit, with the button still on GPIO0 (BOOT): run `pio test -e esp32-s3-devboard -f test_device_tare_button` and follow its prompts (press once, then once more). It checks the idle pin reads released, one press = one tare, and prints the real bounce: level changes ______ over ______ ms. Then, with the firmware and a calibration (step 4):
+    - Press the button once with a small mass hung: expect `# button: tare pressed (presses=1 bounces=…)` then `tare OK`, same result as step 7. `bounces` after 10 presses: ______.
+    - Hold it for 5 s: one tare only.
+    - Press it during `cal unloaded`: `tare: busy`, and the calibration carries on.
+    - Leave it alone for a minute with the engine/fan running nearby: no `# button:` lines, `bounces` doesn't climb.
+    - If the real bounce lasts longer than about 30 ms, raise `TARE_DEBOUNCE_MS` (and rework the test fixture, `test_config` will say).
+    - On the proto board: change `PIN_TARE_BUTTON`/`TARE_BUTTON_ACTIVE_LOW` to the real wiring, rerun `test_device_tare_button`, then repeat the presses above.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
@@ -278,6 +320,10 @@ Also write down, with the results: the date, who did it, which reference mass wa
 | `cal FAILED: calibration rejected: SeparationTooSmall` | The load didn't change the reading enough: not actually hanging, too light, or a loose bridge wire. |
 | `cal FAILED: could not save` | NVS write failed. Retry once; if it keeps failing, the NVS partition may be full or damaged (`pio run -t erase` clears it, and also the calibration). |
 | Boot says `Corrupt` | The stored record is damaged. Recalibrate. |
+| Pressing the tare button prints nothing | Wrong `PIN_TARE_BUTTON`, or the button isn't connected. Run `test_device_tare_button`. |
+| The tare button tares on **release** instead of press | `TARE_BUTTON_ACTIVE_LOW` is backwards for the wiring. |
+| `# button: tare pressed` lines with nobody touching it | Noise on the button wire (long wire, no pull resistor strong enough). Check `bounces`; shorten/shield the wire or add an external 10 kΩ pull resistor. |
+| Board doesn't start after power-up, monitor says `waiting for download` | The button on GPIO0 was held during power-up. Release and reset. |
 | Boot says `UnsupportedSchema` | The firmware's record format changed. Recalibrate. |
 | Typed commands get no reply | The monitor isn't sending line endings (turn on LF or CRLF), or the commands are going to another port. |
 | `# cmd: line ignored (unexpected control ...)` | Wrong baud rate on a UART adapter, or line noise. Over native USB, check the monitor isn't sending special keys. |

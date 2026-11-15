@@ -102,6 +102,13 @@ static constexpr uint32_t COMMAND_QUEUE_LENGTH      = 4;  // parsed commands wai
 static_assert(COMMAND_MAX_BYTES_PER_POLL > 0 && COMMAND_QUEUE_LENGTH > 0,
               "DynoConfig.h: command input needs room for at least one byte and one command");
 
+// Tare button (#36), polled by CommandTask every COMMAND_POLL_INTERVAL_MS.
+// A press counts once the pin has read "pressed" this long. TBD: check the
+// real button's bounce on the rig (docs/calibration.md, "Tare button").
+static constexpr uint32_t TARE_DEBOUNCE_MS = 50; // TBD
+static_assert(TARE_DEBOUNCE_MS >= 2 * COMMAND_POLL_INTERVAL_MS && TARE_DEBOUNCE_MS <= 150,
+              "DynoConfig.h: tare debounce must span two button polls and stay under 150 ms");
+
 // ----------------------------------------------------------------------------
 // Build switches. Override from platformio.ini with -D<NAME>=0/1.
 // ----------------------------------------------------------------------------
