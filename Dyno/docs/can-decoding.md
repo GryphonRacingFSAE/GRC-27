@@ -6,7 +6,7 @@ The **CAN task** listens to the MaxxECU on the CAN bus. It turns 7 of the ECU's 
 
 ```
 ECU ──CAN──► transceiver ──► TwaiCanBus ──► CanReceiver.step(now) ──► EcuState mailbox ──► (#37 power, #38 CSV)
-                            (lib/DynoHardware) (lib/DynoCore, host-tested)  CanStatus mailbox ──► (monitor, #38)
+                            (lib/DynoHardware) (lib/DynoCore, host-tested)  CanStatus mailbox ──► (status line, #38)
                                                     │
                                               decodeEcuFrame + EcuSignals.h table
 ```
@@ -132,15 +132,15 @@ Measure the real rates at the first hardware session (checklist step 6, the moni
 
 | Time in cycle | ECU sends | What you see |
 |---|---|---|
-| 0–2 s | nothing | **startup**: `recv=0x00 fresh=0x00`, all values `-` |
-| 2–10 s | all 7 | **normal updates**: `0x7F / 0x7F`, RPM ramps up |
-| 10–15 s | all except 0x530 | **missing frames**: 0x530 goes **stale** at ≈12 s → `fresh=0x5F` |
-| 15–20 s | nothing | **everything stale** at ≈17 s → `fresh=0x00`, still `recv=0x7F` |
-| 20–25 s | all 7 | **recovery**: `fresh=0x7F` again |
+| 0–2 s | nothing | **startup**: CSV `can_received_mask=0`, `can_fresh_mask=0`, ECU cells blank |
+| 2–10 s | all 7 | **normal updates**: masks `127 / 127`, `rpm` ramps up |
+| 10–15 s | all except 0x530 | **missing frames**: 0x530 goes **stale** at ≈12 s → `can_fresh_mask=95`, `battery_v`/`intake_air_temp_c`/`coolant_temp_c` blank |
+| 15–20 s | nothing | **everything stale** at ≈17 s → `can_fresh_mask=0`, still `can_received_mask=127` |
+| 20–25 s | all 7 | **recovery**: `can_fresh_mask=127` again |
 
 The values are RPM = 1000 + t/2 (t = ms into the cycle), lambda 1.000 / 0.990 / 1.010, target 0.950, 11.00 ms, 45.0 %, knock 0, rev limit 11000, 13.26 V, IAT 34.6 °C, coolant 88.5 °C and gear 1. The exact timeline is pinned down by `test_demo_sequence_timeline` in `test/test_can_receiver/`.
 
-**For #38:** the same fake works on the host with a fake clock:
+**On the host:** the same fake works with a fake clock (`test/test_csv_pipeline` runs it through the whole CSV pipeline):
 
 ```cpp
 FakeCanBus bus(demoEcuScript());
@@ -158,21 +158,19 @@ for (uint32_t t = 0; t < 30000; t += 5) {
 pio run -e esp32-s3-fake -t upload && pio device monitor
 ```
 
-The board says `# FAKE INPUTS: load cell and ECU CAN are simulated` at boot and every 10 s.
+The board says `# FAKE INPUTS: load cell and ECU CAN are simulated` after the CSV header and every 10 s.
 
 `FakeCanBus` can also inject any frame (`inject()`) and simulate faults: `failNextStarts()`, `failNextReceives()`, `goBusOff()` / `refuseNextRecoveries()` / `finishRecovery()` and `setErrors()` (missed frames and controller error counters).
 
-## Serial monitor output (temporary, until #38)
+## Serial output
 
-While `DYNO_SERIAL_MONITOR` is 1, `MonitorTask` prints this twice a second, alongside the `# loadcell` line:
+The ECU values and masks are CSV columns in every row (see [csv-output.md](csv-output.md)): a value is printed only while its message is fresh, and is blank otherwise. Every 5 s a status line shows the link and its counters:
 
 ```
-# ecu recv=0x7F fresh=0x7F EngineSpeed=6000 Lambda_Average=1.000 Lambda_A=0.990 ... GearPosn=1
 # can link=Running decoded=4550 ignored=0 malformed=0 rx_errors=0 missed=0 bus_errors=0 rec=0 tec=0 bus_off=0 recoveries=0 recovery_failures=0 start_failures=0 hz=50,50,50,50,50,50,50 unknown=none
 ```
 
-- `-` means that message was never received.
-- `hz=` is the measured frames per second of each message, in mask order (0x520 … 0x536).
+- `hz=` is the measured frames per second of each message since the previous status line, in mask order (0x520 … 0x536).
 - `unknown=` lists up to 8 distinct IDs that aren't ours (`x…` = extended ID, `+more` = more than 8 seen).
 - `bus_errors`/`rec`/`tec` are the controller's own error counters; ` ERROR_PASSIVE` appears after `tec=` once either counter reaches 128.
 
@@ -182,7 +180,7 @@ While `DYNO_SERIAL_MONITOR` is 1, `MonitorTask` prints this twice a second, alon
 |---|---|---|
 | `pio test -e native -f test_can` | Decoder + `EcuState` + DBC cross-check (31 tests) | none |
 | `pio test -e native -f test_can_receiver` | `CanReceiver` with `FakeCanBus`, plus the demo sequence (21 tests) | none |
-| `pio test -e native` | Everything on the host (70 tests, with AddressSanitizer/UBSan) | none |
+| `pio test -e native` | Everything on the host (153 tests as of #38, with AddressSanitizer/UBSan) | none |
 | `pio test -e esp32-s3-devboard -f test_device_can_loopback` | Real `TwaiCanBus` + decoder + receiver in self-test mode (6 tests) | devkit + 1 jumper wire |
 
 The host tests cover:
@@ -205,8 +203,8 @@ Fake frames don't prove wiring, bus timing or ECU configuration. Real ECU recept
 0. **Loopback, no ECU needed.** On a bare ESP32-S3 devkit, put a jumper wire from the `PIN_CAN_TX` GPIO to the `PIN_CAN_RX` GPIO (numbers in `include/Defines/pindefs.h`) and run `pio test -e esp32-s3-devboard -f test_device_can_loopback`. All 6 tests should pass. This proves the driver, bit timing and frame translation work before you spend time on the bench. Result: ______
 1. **Pins.** Confirm `PIN_CAN_TX`/`PIN_CAN_RX` against the Dyno board schematic (they connect to the transceiver's TXD/RXD), fix `include/Defines/pindefs.h` if needed, and set `DYNO_PINS_CONFIRMED` once every pin is checked.
 2. **Termination.** With everything powered off, measure between CANH and CANL. It should read about **60 Ω** (a 120 Ω terminator at each end of the bus). Measured: ______ Ω
-3. **ECU off.** Flash with `pio run -t upload && pio device monitor`. Expect `# can link=Running` and `start_failures=0`. Expect `# ecu recv=0x00 fresh=0x00` with every value `-`. The `# loadcell` lines must keep printing.
-4. **ECU on.** Within about a second, expect `recv=0x7F fresh=0x7F`. If not:
+3. **ECU off.** Flash with `pio run -t upload && pio device monitor`. Expect `# can link=Running` and `start_failures=0`. Expect CSV rows with `can_received_mask=0`, `can_fresh_mask=0` and every ECU cell blank. Rows must keep printing (10/s).
+4. **ECU on.** Within about a second, expect `can_received_mask=127`, `can_fresh_mask=127`. If not:
    - **`decoded` stays 0 but `ignored` goes up:** the ECU sends different IDs. Compare `unknown=` with the DBC. An `x` prefix means the ECU sends extended IDs.
    - **`malformed` goes up:** the ECU's frame lengths differ from 8.
    - **`bus_errors` climbs (and `rec` rises, maybe `ERROR_PASSIVE`) but `decoded` stays 0:** the dyno can see the bus but can't read it. That's a wrong bit rate (check the ECU's CAN speed against `CAN_BITRATE_KBPS`), CANH/CANL swapped, or missing termination. Unplug the dyno while you fix it, because in normal mode it puts error frames on the bus (see "Driver setup and choices").
@@ -220,7 +218,7 @@ Fake frames don't prove wiring, bus timing or ECU configuration. Real ECU recept
 
    Write down any value that is off by a factor of 10/100 (scale wrong) or wildly wrong (byte order or start bit wrong).
 6. **Rates.** Record the `hz=` values for each message: ______. If the slowest is much faster than 2.5 Hz, consider lowering `CAN_FRESHNESS_MS` (≈ 5× the slowest period).
-7. **Unplug CAN** while running. Within 2 s, expect `fresh=0x00` while `recv=0x7F` stays. The values stay at their last reading. `link` stays `Running`, and the load-cell lines keep coming (nothing freezes). **Replug:** `fresh=0x7F` again within a second.
+7. **Unplug CAN** while running. Within 2 s, expect `can_fresh_mask=0` while `can_received_mask=127` stays, and the ECU cells go blank. `link` stays `Running`, and rows keep coming with the load-cell columns (nothing freezes). **Replug:** `can_fresh_mask=127` again within a second.
 8. **Soak.** Run for 30 minutes with the ECU on. At the end, check:
    - `missed=0`
    - `rx_errors`, `bus_errors` and `bus_off` haven't grown (a few `bus_errors` from plugging and unplugging are fine)

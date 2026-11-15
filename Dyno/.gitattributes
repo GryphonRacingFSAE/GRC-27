@@ -1,0 +1,2 @@
+# The CSV sample is a byte-exact example of the serial output (CRLF line endings, #38).
+docs/csv-sample.csv -text

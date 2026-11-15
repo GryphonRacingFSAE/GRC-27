@@ -6,8 +6,10 @@
 #include <CanTask.h>
 #include <DynoConfig.h>
 #include <LoadCellAcquirer.h>
+#include <CsvTask.h>
 #include <LoadCellTask.h>
-#include <MonitorTask.h>
+#include <OutputLine.h>
+#include <OutputTask.h>
 
 // Mailboxes: 1-slot queues. The writer replaces the contents with
 // xQueueOverwrite; readers look with xQueuePeek (doesn't remove it).
@@ -21,10 +23,13 @@ static LoadCellTaskParams loadCellParams;
 static TaskHandle_t canTaskHandle = NULL;
 static CanTaskParams canParams;
 
-#if DYNO_SERIAL_MONITOR
-static TaskHandle_t monitorTaskHandle = NULL;
-static MonitorTaskParams monitorParams;
-#endif
+// The bounded queue of complete lines (CSV rows, "# " lines) for OutputTask.
+static QueueHandle_t outputQueue = NULL;
+
+static TaskHandle_t csvTaskHandle = NULL;
+static CsvTaskParams csvParams;
+static TaskHandle_t outputTaskHandle = NULL;
+static OutputTaskParams outputParams;
 
 void createTasks() {
     // 1. Mailboxes, pre-filled so a reader never finds them empty.
@@ -48,11 +53,23 @@ void createTasks() {
     xQueueOverwrite(ecuMailbox, &nothingReceived);
     xQueueOverwrite(canStatusMailbox, &notStarted);
 
+    outputQueue = xQueueCreate(CSV_OUTPUT_QUEUE_LINES, sizeof(OutputLine));
+    if (outputQueue == NULL) {
+        haltWithError("could not create the output queue (out of memory)");
+    }
+    setDiagnosticQueue(outputQueue);
+
     // 2. Params
     loadCellParams.sampleMailbox = loadCellSampleMailbox;
     loadCellParams.countersMailbox = loadCellCountersMailbox;
     canParams.ecuMailbox = ecuMailbox;
     canParams.statusMailbox = canStatusMailbox;
+    csvParams.loadCellSampleMailbox = loadCellSampleMailbox;
+    csvParams.loadCellCountersMailbox = loadCellCountersMailbox;
+    csvParams.ecuMailbox = ecuMailbox;
+    csvParams.canStatusMailbox = canStatusMailbox;
+    csvParams.outputQueue = outputQueue;
+    outputParams.outputQueue = outputQueue;
 
     // 3. Tasks
     if (xTaskCreate(LoadCellTask, "LoadCellTask", 4096, &loadCellParams, 2, &loadCellTaskHandle) != pdPASS) {
@@ -62,13 +79,15 @@ void createTasks() {
         haltWithError("could not create CanTask (out of memory)");
     }
 
-#if DYNO_SERIAL_MONITOR
-    monitorParams.loadCellSampleMailbox = loadCellSampleMailbox;
-    monitorParams.loadCellCountersMailbox = loadCellCountersMailbox;
-    monitorParams.ecuMailbox = ecuMailbox;
-    monitorParams.canStatusMailbox = canStatusMailbox;
-    if (xTaskCreate(MonitorTask, "Monitor", 4096, &monitorParams, 1, &monitorTaskHandle) != pdPASS) {
-        haltWithError("could not create MonitorTask (out of memory)");
+    // CsvTask: same priority as acquisition (short, fixed-rate work that must
+    // not be starved). 6 KB stack: two 512-byte lines + printf of doubles.
+    if (xTaskCreate(CsvTask, "CsvTask", 6144, &csvParams, 2, &csvTaskHandle) != pdPASS) {
+        haltWithError("could not create CsvTask (out of memory)");
     }
-#endif
+    // OutputTask LAST and lowest priority: the only serial writer from here
+    // on (haltWithError above still printed directly, safely, before it
+    // existed), and a slow PC can only ever hold up this task.
+    if (xTaskCreate(OutputTask, "OutputTask", 3072, &outputParams, 1, &outputTaskHandle) != pdPASS) {
+        haltWithError("could not create OutputTask (out of memory)");
+    }
 }

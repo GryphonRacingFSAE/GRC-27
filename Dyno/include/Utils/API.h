@@ -2,10 +2,25 @@
 // Custom API functions that are used in multiple files can be included here.
 #pragma once
 
-// Prints the "# WARNING" / "# FAKE INPUTS" lines that apply to this build.
-// Called at boot and repeated by the monitor task.
+#include <Arduino.h>
+
+// Where "# " lines go: the output queue that OutputTask prints (#38).
+// Set once by createTasks() before any task runs.
+void setDiagnosticQueue(QueueHandle_t outputQueue);
+
+// Queues "# <text>\r\n" for OutputTask from ANY task, without waiting.
+// Returns false if it was dropped (queue full, or no queue yet); drops are
+// counted and shown in the "# output" status line. Use this, never Serial,
+// once tasks run: OutputTask is the only serial writer, so lines never mix.
+bool printDiagnostic(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
+uint32_t diagnosticLinesDropped();
+
+// Queues the "# WARNING" / "# FAKE INPUTS" lines that apply to this build.
+// Sent after the CSV header and repeated by CsvTask.
 void printDiagnosticWarnings();
 
-// Prints "# ERROR: <message>" once a second forever. For startup failures
-// (out of memory) where carrying on would mean running half a dyno.
+// Prints "# ERROR: <message>" once a second forever, straight to Serial.
+// For startup failures (out of memory) where carrying on would mean running
+// half a dyno. Only for createTasks(): it runs before OutputTask exists, so
+// it's then the only serial writer.
 [[noreturn]] void haltWithError(const char* message);
