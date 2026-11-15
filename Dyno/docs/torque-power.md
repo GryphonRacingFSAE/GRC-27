@@ -134,15 +134,15 @@ All are first guesses to retune on hardware once real rates and noise are known.
 
 `test_torque_power` checks every row, so #38 can use them directly as fixtures. **Their geometry is the issue's example (0.25 m, same shaft), labelled FIXTURE ONLY, not the real dyno.**
 
-## Where the firmware uses it (until #38)
+## Where the firmware uses it
 
-The temporary `MonitorTask` peeks the ECU mailbox, takes `millis()`, and calls `computeTorquePower()` with the real `DynoConfig.h` setup. It prints a line every 500 ms. #38 moves this call into its output task. Today it prints:
+`CsvTask` (#38) peeks the mailboxes, takes `millis()`, and calls `computeTorquePower()` (through `takeSnapshot()`) with the real `DynoConfig.h` setup for every CSV row. The results are the `torque_nm`, `power_w`, `horsepower_hp` and version columns (see [csv-output.md](csv-output.md)). Every 5 s a status line says why a value is blank:
 
 ```
 # calc torque_nm=-(ForceUnavailable) power_w=-(ForceUnavailable) reverse_torque=0 versions=- force_ts_ms=0 rpm_ts_ms=51230
 ```
 
-`ForceUnavailable` is expected until #35 provides calibrated force. At startup (repeated every 10 s), these lines print until the setup is confirmed:
+`ForceUnavailable` is expected until #35 provides calibrated force. After the CSV header (repeated every 10 s), these lines print until the setup is confirmed:
 
 ```
 # WARNING: dyno geometry unconfirmed (DynoConfig.h): torque and power are disabled
@@ -170,7 +170,7 @@ The real values are **unknown**, so real torque and power stay invalid until thi
 Power is only physical if the RPM describes **the shaft the load cell measures**. Before setting `SAME_SHAFT_CONFIRMED`:
 
 1. From the setup note: if the load cell measures the **engine crank** (absorber directly coupled, no belt/gear), ECU engine RPM is the right speed.
-2. Check it on hardware: measure the load-cell shaft's speed independently (optical/strobe tachometer on that shaft) at two or three steady speeds, and compare with the ECU RPM in the `# ecu` line. They should agree within the tachometer's accuracy. Record: ______
+2. Check it on hardware: measure the load-cell shaft's speed independently (optical/strobe tachometer on that shaft) at two or three steady speeds, and compare with the CSV `rpm` column. They should agree within the tachometer's accuracy. Record: ______
 3. If the load cell measures a **different shaft** (roller, after a belt/gearbox), ECU RPM must **not** be used. Leave `SAME_SHAFT_CONFIRMED = false`, so power stays invalid. Supporting another shaft (a measured ratio or a separate speed sensor) is a design change for the team, not a setting to guess.
 
 ## When the answers arrive

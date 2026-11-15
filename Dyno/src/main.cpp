@@ -1,12 +1,16 @@
 #include <API.h>
 #include <Arduino.h>
+#include <DynoConfig.h>
 #include <TaskFactory.h>
 
 void setup() {
-  Serial.begin(115200);
+  // Room for a whole line in the USB serial transmit buffer (default 256 bytes;
+  // the CSV header is ~420). Must be set before begin().
+  Serial.setTxBufferSize(1024);
+  Serial.begin(DYNO_SERIAL_BAUD);
 
-  printDiagnosticWarnings();
-
+  // Creates the tasks. From then on OutputTask is the only serial writer:
+  // CsvTask queues the CSV header first, then the startup warnings.
   createTasks();
 }
 

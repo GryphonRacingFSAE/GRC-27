@@ -83,17 +83,19 @@ pio test -e native -f test_loadcell
 pio run -e esp32-s3-fake -t upload && pio device monitor
 ```
 
-This builds with `DYNO_FAKE_INPUTS=1` (which also fakes the ECU; see [can-decoding.md](can-decoding.md)). Instead of the HX711, the load-cell task uses a scripted fake: an 80 Hz ramp of 1000 counts/s from 0, a 3 s "unplug" from 27 s to 30 s, repeating every 30 s. You should see `raw` climb, then `status=Fault` about 0.5 s after the 27 s mark, then `Valid` again from 0 at 30 s. The board prints `# FAKE INPUTS` at boot and every 10 s.
+This builds with `DYNO_FAKE_INPUTS=1` (which also fakes the ECU; see [can-decoding.md](can-decoding.md)). Instead of the HX711, the load-cell task uses a scripted fake: an 80 Hz ramp of 1000 counts/s from 0, a 3 s "unplug" from 27 s to 30 s, repeating every 30 s. You should see `raw` climb, then `status=Fault` about 0.5 s after the 27 s mark, then `Valid` again from 0 at 30 s. The board prints `# FAKE INPUTS` after the CSV header and every 10 s.
 
-## Serial monitor output (temporary, until #38)
+## Serial output
 
-While `DYNO_SERIAL_MONITOR` is 1 (the default for now), a small task (`MonitorTask`) prints the mailbox twice a second, together with the CAN lines described in [can-decoding.md](can-decoding.md):
+The load cell appears in two places in the serial output (see [csv-output.md](csv-output.md)):
+- the CSV columns `loadcell_raw` and `loadcell_valid`, in every row (10 rows/s for now)
+- a status line every 5 s, which also shows the counters:
 
 ```
 # loadcell raw=84213 t=51230 status=Valid timeouts=0 faults=0 recoveries=0 samples=4098
 ```
 
-Every 10 s it also repeats the startup warnings (unconfirmed pins, fake inputs), because the USB serial connection often misses boot messages. Lines start with `# ` so the CSV tools from #38 skip them. #38 replaces this task with the real output task.
+Every 10 s the startup warnings (unconfirmed pins, fake inputs) are repeated, because the USB serial connection often misses boot messages. Every `# ` line is skipped by CSV tools.
 
 ## Hardware checklist (#34)
 
@@ -103,8 +105,8 @@ Do these in order at the first hardware session and write the results in the PR 
 2. **Wiring.** Load cell to HX711 (E+, E-, A+, A-), HX711 to the board (VCC, GND, DOUT, SCK). Flash with `pio run -t upload && pio device monitor`.
 3. **Unloaded readings.** With nothing on the load cell, `status=Valid` and `raw` is steady, wobbling by only a small amount. Note the typical value and how much it wobbles: ______
 4. **Gentle load.** Press or hang a small weight. `raw` moves one way and comes back when you remove it. Pull the other way and it moves the other way (it may go negative). Note the direction: ______
-5. **Sample rate.** Over 10 s of monitor lines, `samples` should go up by about 100 (10 Hz) or about 800 (80 Hz). Measured: ______ Hz. This tells you how the RATE pin is wired.
-6. **Unplug.** Pull the HX711's DOUT wire, or the whole HX711, while running. Within about 0.5 s the status should be `status=Fault`, with `faults` up by 1. The board must not freeze: the monitor lines keep coming.
+5. **Sample rate.** Between two `# loadcell` lines (5 s apart), `samples` should go up by about 50 (10 Hz) or about 400 (80 Hz). Measured: ______ Hz. This tells you how the RATE pin is wired.
+6. **Unplug.** Pull the HX711's DOUT wire, or the whole HX711, while running. Within about 0.5 s the status should be `status=Fault`, with `faults` up by 1. The board must not freeze: CSV rows keep coming (`loadcell_valid=0`, `loadcell_raw` blank).
    - Pulling only the **load-cell** wires (E+/E-/A+/A-) is different. The HX711 keeps converting and reports the reading as `Valid`, but `raw` jumps to a junk or maxed-out value. That is expected for #34. Catching it is #35's job, which rejects maxed-out readings.
 7. **Replug.** Reconnect. Within a couple of seconds the status should be back to `status=Valid`, `recoveries` should go up by 1, and `t` should be advancing again. It can take up to about 2.5 s if you replug just as a retry cycle starts: 1 s of rest, then the chip's first conversion.
-8. **Soak test.** Leave it running for **30 minutes**. At the end, check that monitor lines are still printing and there were no resets (no boot messages mid-run). Record `timeouts`, `faults`, `recoveries` and `samples`: ______. `faults` should be 0 if nothing was unplugged.
+8. **Soak test.** Leave it running for **30 minutes**. At the end, check that CSV rows are still printing and there were no resets (no boot messages mid-run). Record `timeouts`, `faults`, `recoveries` and `samples`: ______. `faults` should be 0 if nothing was unplugged.

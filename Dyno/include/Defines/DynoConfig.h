@@ -1,7 +1,7 @@
 // ============================================================================
 // Dyno configuration: tunable settings (and, later, the mechanical setup).
 // Each value lives only here; nothing else may hard-code these numbers.
-// Later tickets add their own sections (CAN, calibration, geometry, CSV).
+// Later tickets add their own sections (calibration, ...).
 // ============================================================================
 #pragma once
 
@@ -68,9 +68,33 @@ static_assert(MAX_SOURCE_SKEW_MS > 0 && MAX_SOURCE_SKEW_MS < CAN_FRESHNESS_MS,
 #ifndef DYNO_FAKE_INPUTS
 #define DYNO_FAKE_INPUTS 0       // 1 = scripted fake load cell and ECU instead of the HX711 and CAN bus (bare devkit)
 #endif
-#ifndef DYNO_SERIAL_MONITOR
-#define DYNO_SERIAL_MONITOR 1    // temporary "# loadcell/# ecu/# can ..." serial printout; removed by #38
+
+// ----------------------------------------------------------------------------
+// Serial CSV output (#38). See docs/csv-output.md.
+// ----------------------------------------------------------------------------
+// TBD (team decision still to be made): how often a CSV row is printed.
+// 100 ms = 10 rows/s for now. Change this one number to change the rate;
+// nothing else needs editing (the static_asserts below keep it sane).
+static constexpr uint32_t CSV_ROW_INTERVAL_MS = 100;
+
+static constexpr uint32_t CSV_OUTPUT_QUEUE_LINES = 16;     // lines waiting for the serial port (~1.6 s of rows); full = new row dropped + counted
+static constexpr uint32_t STATUS_LINE_INTERVAL_MS = 5000;  // "# loadcell/# can/# calc/# output" status lines
+static constexpr uint32_t DIAGNOSTIC_REPEAT_INTERVAL_MS = 10000; // re-print startup warnings (USB serial often misses boot)
+
+// The serial speed, defined once in platformio.ini ([dyno] serial_baud) and
+// passed in as -DDYNO_SERIAL_BAUD so the monitor and the firmware agree.
+// (Over the ESP32-S3's native USB the number isn't used by the hardware, but
+// it is if the board is read through a UART adapter.)
+#ifndef DYNO_SERIAL_BAUD
+#define DYNO_SERIAL_BAUD 115200
 #endif
 
-static constexpr uint32_t SERIAL_MONITOR_INTERVAL_MS = 500;     // 2 Hz printout
-static constexpr uint32_t DIAGNOSTIC_REPEAT_INTERVAL_MS = 10000; // re-print startup warnings
+static_assert(CSV_ROW_INTERVAL_MS >= 20 && CSV_ROW_INTERVAL_MS <= 1000,
+              "DynoConfig.h: CSV row interval must be 20-1000 ms");
+static_assert(CSV_ROW_INTERVAL_MS < CAN_FRESHNESS_MS && CSV_ROW_INTERVAL_MS < FORCE_FRESHNESS_MS,
+              "DynoConfig.h: rows must come faster than inputs go stale, or fresh data is never printed");
+// A worst-case row (~256 bytes, 10 bits per byte on a UART) must fit the line rate.
+static_assert(256ull * 10 * (1000 / CSV_ROW_INTERVAL_MS) < DYNO_SERIAL_BAUD,
+              "DynoConfig.h: serial baud too slow for this CSV row interval");
+static_assert(CSV_OUTPUT_QUEUE_LINES >= 4, "DynoConfig.h: output queue needs room for a row plus status lines");
+static_assert(STATUS_LINE_INTERVAL_MS >= 1000, "DynoConfig.h: status lines are low-rate (>= 1 s) so rows dominate");
