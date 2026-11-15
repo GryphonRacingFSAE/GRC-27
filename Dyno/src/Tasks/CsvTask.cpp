@@ -185,8 +185,9 @@ void CsvTask(void* pvParameters) {
             MeasurementInputs inputs;
             xQueuePeek(params->ecuMailbox, &inputs.ecu, 0);
             xQueuePeek(params->loadCellSampleMailbox, &inputs.loadcell, 0);
-            // inputs.force stays "unavailable" until #35 (calibration)
-            // publishes a ForceMeasurement: force/torque/power stay blank.
+            // The force carries its own calibration/tare versions, so they
+            // can't be mismatched here.
+            xQueuePeek(params->forceMailbox, &inputs.force, 0);
             const uint32_t now_ms = millis(); // AFTER the peeks, so ages are never negative
 
             const DynoSnapshot snap = publisher.publishRow(inputs, now_ms);

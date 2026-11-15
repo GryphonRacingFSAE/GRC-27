@@ -11,6 +11,7 @@
 struct CsvTaskParams {
     QueueHandle_t loadCellSampleMailbox;   // LoadCellSample (peek)
     QueueHandle_t loadCellCountersMailbox; // LoadCellCounters (peek)
+    QueueHandle_t forceMailbox;            // ForceMeasurement (peek), from LoadCellTask (#35)
     QueueHandle_t ecuMailbox;              // EcuState (peek)
     QueueHandle_t canStatusMailbox;        // CanStatus (peek)
     QueueHandle_t outputQueue;             // OutputLine, to OutputTask

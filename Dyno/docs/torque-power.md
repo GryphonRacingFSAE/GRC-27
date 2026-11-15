@@ -35,7 +35,7 @@ At 6000 rpm: 628.318531 rad/s, 15707.963 W, 21.064726 hp.
 
 | Input | Type | Where it comes from |
 |---|---|---|
-| Force | `ForceMeasurement` (`ForceMeasurement.h`) | **#35** fills it from a `LoadCellSample` and the accepted calibration. Until then the firmware has no force, so torque and power read `ForceUnavailable`. |
+| Force | `ForceMeasurement` (`ForceMeasurement.h`) | **#35**'s calibrator fills it from a `LoadCellSample` and the accepted calibration (see [calibration.md](calibration.md)). Until the load cell is calibrated, torque and power read `ForceUnavailable`. |
 | Shaft speed | `ShaftSpeedSample` | `engineSpeedFromEcu(ecu)`: `EngineSpeed` from 0x520 and the time that frame arrived. |
 | Geometry | `MechanicalSetup` | `dynoMechanicalSetup()` (`include/Defines/DynoCalcSetup.h`) from `DynoConfig.h`: `EFFECTIVE_ARM_M`, `GEOMETRY_CONFIRMED`, `SAME_SHAFT_CONFIRMED`. |
 | Limits | `CalcLimits` | `dynoCalcLimits()` from `DynoConfig.h`: `FORCE_FRESHNESS_MS`, `CAN_FRESHNESS_MS`, `MAX_SOURCE_SKEW_MS`, `EFFECTIVE_ARM_MAX_M`. |
@@ -92,7 +92,7 @@ The checks run in this order, and the **first failing one** is the reason. If to
 
 So **torque can be valid without RPM; power cannot.** A valid 0 rpm gives valid torque and valid 0 W.
 
-**To agree with #35:** if #35 marks force both `available = false` and `calibration_ready = false` while collecting, the reason reads `ForceUnavailable` (check 1 wins). The output is invalid either way. If the operator should see `CalibrationNotReady` during collection, #35 keeps `available = true` with `calibration_ready = false`, or the order of checks 1 and 2 is swapped then.
+**What #35 does:** while a calibration or tare is collecting, it publishes force with both `available = false` and `calibration_ready = false`, so the reason reads `ForceUnavailable` (check 1 wins) and the CSV shows `calibration_ready=0`. `CalibrationNotReady` is kept as a safety net for a producer that ever marks force available while not ready.
 
 ## Freshness and source skew
 
@@ -121,7 +121,7 @@ All are first guesses to retune on hardware once real rates and noise are known.
 ## Calibration and tare changes
 
 - The result's version pair is **copied only from the force it was computed from**, never from "current" settings. So a force computed under calibration 1 can never appear with calibration 2's label, even if calibration 2 was accepted in between.
-- While calibration or tare is collecting, #35/#36 set `calibration_ready = 0`. Torque and power are then invalid (`CalibrationNotReady`) and the versions are blank.
+- While calibration or tare is collecting, #35/#36 set `calibration_ready = 0`. Torque and power are then invalid (`ForceUnavailable`, since #35 also marks the force unavailable) and the versions are blank.
 - Versions are blank whenever the force itself is unusable (unavailable, not ready, not finite, stale). They stay known when only the geometry is the problem, because they still describe a good force.
 - This module never recalibrates counts or applies tare. That is #35/#36's job, done once.
 
@@ -142,7 +142,7 @@ All are first guesses to retune on hardware once real rates and noise are known.
 # calc torque_nm=-(ForceUnavailable) power_w=-(ForceUnavailable) reverse_torque=0 versions=- force_ts_ms=0 rpm_ts_ms=51230
 ```
 
-`ForceUnavailable` is expected until #35 provides calibrated force. After the CSV header (repeated every 10 s), these lines print until the setup is confirmed:
+`ForceUnavailable` is expected until the load cell is calibrated ([calibration.md](calibration.md)). After the CSV header (repeated every 10 s), these lines print until the setup is confirmed:
 
 ```
 # WARNING: dyno geometry unconfirmed (DynoConfig.h): torque and power are disabled

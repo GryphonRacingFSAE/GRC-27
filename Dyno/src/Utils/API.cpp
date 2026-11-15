@@ -9,6 +9,10 @@
 
 static QueueHandle_t diagnosticQueue = NULL;
 static std::atomic<uint32_t> diagnosticDrops{0};
+// 0 = not known yet (LoadCellTask hasn't loaded the saved calibration),
+// 1 = calibrated, 2 = not calibrated. "Not known" prints no warning: the
+// calibrator says what it found at boot itself.
+static std::atomic<uint8_t> forceCalibration{0};
 
 void setDiagnosticQueue(QueueHandle_t outputQueue) { diagnosticQueue = outputQueue; }
 
@@ -27,6 +31,8 @@ bool printDiagnostic(const char* fmt, ...) {
 
 uint32_t diagnosticLinesDropped() { return diagnosticDrops.load(); }
 
+void setForceCalibrated(bool calibrated) { forceCalibration.store(calibrated ? 1 : 2); }
+
 // Diagnostics use the "# " prefix so CSV parsers skip them.
 void printDiagnosticWarnings() {
 #if !DYNO_PINS_CONFIRMED
@@ -38,7 +44,10 @@ void printDiagnosticWarnings() {
     if (!SAME_SHAFT_CONFIRMED) {
         printDiagnostic("WARNING: ECU RPM not confirmed to be the load-cell shaft (DynoConfig.h): power is disabled");
     }
-    printDiagnostic("WARNING: no calibrated force yet (#35 not merged): force, torque and power columns are blank");
+    if (forceCalibration.load() == 2) {
+        printDiagnostic("WARNING: load cell not calibrated: force, torque and power columns are blank (type \"cal "
+                        "unloaded\" to start; see docs/calibration.md)");
+    }
 #if DYNO_FAKE_INPUTS
     printDiagnostic("FAKE INPUTS: load cell and ECU CAN are simulated (DYNO_FAKE_INPUTS=1), not reading the HX711 or "
                     "the CAN bus");

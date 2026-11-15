@@ -15,6 +15,10 @@ void setDiagnosticQueue(QueueHandle_t outputQueue);
 bool printDiagnostic(const char* fmt, ...) __attribute__((format(printf, 1, 2)));
 uint32_t diagnosticLinesDropped();
 
+// Whether a usable calibration is active (#35). LoadCellTask sets it; it
+// only decides whether the "not calibrated" warning is repeated.
+void setForceCalibrated(bool calibrated);
+
 // Queues the "# WARNING" / "# FAKE INPUTS" lines that apply to this build.
 // Sent after the CSV header and repeated by CsvTask.
 void printDiagnosticWarnings();
