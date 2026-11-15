@@ -7,7 +7,7 @@ How the dyno reads its load cell (issue #34), why it is built this way, and how 
 The **load-cell task** is the only code that talks to the HX711. Every 5 ms it asks the chip "do you have a reading?" If the answer is yes, it reads the value once and stamps it with the current `millis()`. It then publishes the latest reading to a **mailbox** (a one-slot FreeRTOS queue). Other tasks look at the mailbox whenever they need the reading.
 
 ```
-HX711 ──► Hx711Provider ──► LoadCellAcquirer.step(now) ──► sample mailbox ──► (#35 calibration, #37 maths, …)
+HX711 ──► Hx711Provider ──► LoadCellAcquirer.step(now) ──► sample mailbox ──► (calibration → force, see calibration.md)
            (lib/DynoHardware) (lib/DynoCore, host-tested)    (xQueuePeek)
 ```
 
@@ -15,7 +15,7 @@ The published `LoadCellSample` is:
 
 | Field | Meaning |
 |---|---|
-| `raw` | HX711 counts, exactly as the chip sent them. Can be negative. Not filtered, so out-of-range rejection is #35's job. |
+| `raw` | HX711 counts, exactly as the chip sent them. Can be negative. Not filtered: maxed-out readings are rejected by the calibrator ([calibration.md](calibration.md)). |
 | `timestamp_ms` | `millis()` when it was read. **When it changes, there is a new reading.** |
 | `status` | `NoSampleYet` (nothing read since boot), `Valid`, or `Fault` (sensor stopped answering). |
 
@@ -107,6 +107,6 @@ Do these in order at the first hardware session and write the results in the PR 
 4. **Gentle load.** Press or hang a small weight. `raw` moves one way and comes back when you remove it. Pull the other way and it moves the other way (it may go negative). Note the direction: ______
 5. **Sample rate.** Between two `# loadcell` lines (5 s apart), `samples` should go up by about 50 (10 Hz) or about 400 (80 Hz). Measured: ______ Hz. This tells you how the RATE pin is wired.
 6. **Unplug.** Pull the HX711's DOUT wire, or the whole HX711, while running. Within about 0.5 s the status should be `status=Fault`, with `faults` up by 1. The board must not freeze: CSV rows keep coming (`loadcell_valid=0`, `loadcell_raw` blank).
-   - Pulling only the **load-cell** wires (E+/E-/A+/A-) is different. The HX711 keeps converting and reports the reading as `Valid`, but `raw` jumps to a junk or maxed-out value. That is expected for #34. Catching it is #35's job, which rejects maxed-out readings.
+   - Pulling only the **load-cell** wires (E+/E-/A+/A-) is different. The HX711 keeps converting and reports the reading as `Valid`, but `raw` jumps to a junk or maxed-out value. That is expected here. The calibrator rejects maxed-out readings during calibration and tare ([calibration.md](calibration.md) checklist step 8d).
 7. **Replug.** Reconnect. Within a couple of seconds the status should be back to `status=Valid`, `recoveries` should go up by 1, and `t` should be advancing again. It can take up to about 2.5 s if you replug just as a retry cycle starts: 1 s of rest, then the chip's first conversion.
 8. **Soak test.** Leave it running for **30 minutes**. At the end, check that CSV rows are still printing and there were no resets (no boot messages mid-run). Record `timeouts`, `faults`, `recoveries` and `samples`: ______. `faults` should be 0 if nothing was unplugged.

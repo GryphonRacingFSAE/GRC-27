@@ -72,7 +72,7 @@ Details:
 - **CAN masks:** bit 0 = `0x520`, 1 = `0x521`, 2 = `0x522`, 3 = `0x526`, 4 = `0x527`, 5 = `0x530`, 6 = `0x536`. *Received* = a valid frame has arrived since boot; *fresh* = the last one is younger than `CAN_FRESHNESS_MS` (2000 ms). All seven = 127. Fresh bits are always a subset of received bits. Example: `127,95` = everything received, but `0x530` (bit 5, value 32) is stale.
 - **ECU values** (`rpm` … `gear`) are the 13 signals from #33, already scaled to engineering units with the DBC's signed/unsigned rules. The decimals are set by the DBC scale (0.001 → 3 decimals) and printed with integer maths, so nothing is lost to rounding. `gear` is the DBC's raw `GearPosn` value, not reinterpreted.
 - **`loadcell_valid`** = 1 only for a fresh usable sample: status `Valid` and younger than `FORCE_FRESHNESS_MS` (500 ms).
-- **Force, versions, `calibration_ready`** come from the calibrated-force producer (#35). **#35 is not merged yet**, so in today's firmware `force_n`, `torque_nm`, `power_w`, `horsepower_hp` and both versions are always blank, `calibration_ready` is 0, and a `# WARNING: no calibrated force yet` line says so. The host tests already cover these columns with fixture forces. The versions printed are the pair carried by the force measurement used for this row. Readiness, timestamps and versions are frozen in the snapshot before the row is queued, so a queued row can't pick up newer metadata.
+- **Force, versions, `calibration_ready`** come from the calibrator in the load-cell task (#35, see [calibration.md](calibration.md)). Until the load cell has been calibrated once, `force_n`, `torque_nm`, `power_w`, `horsepower_hp` and both versions are blank, `calibration_ready` is 0, and a `# WARNING: load cell not calibrated` line says so. While a calibration or tare is collecting, `calibration_ready` is 0 and the force is blank too. The versions printed are the pair carried by the force measurement used for this row. Readiness, timestamps and versions are frozen in the snapshot before the row is queued, so a queued row can't pick up newer metadata.
 - **Torque and power** come from #37's `computeTorquePower()`. Reasons for a blank value appear in the `# calc` status line.
 - **`output_dropped_rows`**: rows discarded since boot because the output queue was full (see below). It never goes down until a restart.
 
@@ -93,7 +93,7 @@ Details:
 - `0` ms: startup, nothing received yet: every measurement is blank.
 - `1500`: load cell running, ECU silent.
 - `2500`: every ECU message fresh; force blank (no calibration).
-- `2600`: **fixture only** (#35 isn't merged): a 100 N calibrated force with a 0.25 m arm gives 25 N·m, and at 6000 rpm 15708 W = 21.065 hp.
+- `2600`: **fixture only** (not a real capture; the arm isn't measured yet): a 100 N calibrated force with a 0.25 m arm gives 25 N·m, and at 6000 rpm 15708 W = 21.065 hp.
 - `12000`: `0x530` stale: battery and both temperatures blank, everything else kept.
 - `28000`: load-cell fault: `loadcell_valid=0`, raw blank.
 - `30000`: 3 rows have been dropped so far.
@@ -102,7 +102,7 @@ Details:
 
 | Line | When |
 | --- | --- |
-| `# WARNING: ...` | After the header, then every 10 s (`DIAGNOSTIC_REPEAT_INTERVAL_MS`), because USB serial often misses boot messages. Unconfirmed pins, geometry or same-shaft setup; no calibrated force yet. |
+| `# WARNING: ...` | After the header, then every 10 s (`DIAGNOSTIC_REPEAT_INTERVAL_MS`), because USB serial often misses boot messages. Unconfirmed pins, geometry or same-shaft setup; load cell not calibrated. |
 | `# FAKE INPUTS: ...` | Same timing, only in the `esp32-s3-fake` build. Normal builds never invent measurements. |
 | `# loadcell raw=... status=... samples=...` | Every 5 s (`STATUS_LINE_INTERVAL_MS`). See [loadcell-acquisition.md](loadcell-acquisition.md). |
 | `# can link=... hz=... unknown=...` | Every 5 s. See [can-decoding.md](can-decoding.md). |
@@ -111,8 +111,9 @@ Details:
 | `# ERROR: CSV row too long, not printed (N so far)` | A row didn't fit its 512-byte buffer (shouldn't happen: a worst-case row is ~250 bytes). The row is skipped, never printed cut short. |
 | `# ERROR: diagnostic line too long, not printed` | Same, for a `# ` line. |
 | `# ERROR: <message>` (repeating) | Startup failed (out of memory). The board stops. |
+| `# cal ...`, `# tare ...`, `# cmd: ...` | Replies to commands typed into the serial monitor, and the calibration found at boot (#35). See [calibration.md](calibration.md). |
 
-Other tickets (for example tare acknowledgements from #35) add their own `# ` lines with `printDiagnostic()`, which any task can call. It never waits: if the queue is full, the line is dropped and counted in `diagnostics_dropped`.
+Other code adds its own `# ` lines with `printDiagnostic()`, which any task can call. It never waits: if the queue is full, the line is dropped and counted in `diagnostics_dropped`.
 
 ## How output works (and what happens when the PC is slow)
 

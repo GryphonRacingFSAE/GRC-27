@@ -1,7 +1,7 @@
 // ============================================================================
 // Dyno configuration: tunable settings (and, later, the mechanical setup).
 // Each value lives only here; nothing else may hard-code these numbers.
-// Later tickets add their own sections (calibration, ...).
+// Later tickets add their own sections.
 // ============================================================================
 #pragma once
 
@@ -61,6 +61,46 @@ static_assert(!GEOMETRY_CONFIRMED || (EFFECTIVE_ARM_M > 0.0 && EFFECTIVE_ARM_M <
 static_assert(FORCE_FRESHNESS_MS > 100, "DynoConfig.h: force freshness must cover a 10 Hz HX711 sample period");
 static_assert(MAX_SOURCE_SKEW_MS > 0 && MAX_SOURCE_SKEW_MS < CAN_FRESHNESS_MS,
               "DynoConfig.h: source skew limit must be positive and shorter than the CAN freshness");
+
+// ----------------------------------------------------------------------------
+// Load-cell calibration and tare (#35). See docs/calibration.md.
+//
+// TBD: starting values, not yet checked against the real load cell's noise.
+// Retune them on the rig (docs/calibration.md, "Tuning"). If changed, rework
+// the fixture in lib/DynoCore/src/CalibrationExamples.h (test_config checks
+// they match).
+// ----------------------------------------------------------------------------
+// A reading is stable when the last CAL_WINDOW_MS of samples (at least
+// CAL_MIN_SAMPLES of them) differ by at most CAL_MAX_SPREAD_COUNTS; the
+// result is their mean. Give up CAL_TIMEOUT_MS after the command.
+static constexpr uint32_t CAL_WINDOW_MS             = 1000;   // TBD
+static constexpr uint32_t CAL_MIN_SAMPLES           = 8;      // TBD: 10 Hz gives 10 per second
+static constexpr int32_t  CAL_MAX_SPREAD_COUNTS     = 500;    // TBD: measure the unloaded noise first
+static constexpr uint32_t CAL_TIMEOUT_MS            = 10000;  // TBD
+// loaded - unloaded must differ by at least this, or noise would decide the scale.
+static constexpr double   CAL_MIN_SEPARATION_COUNTS = 5000.0; // TBD
+// A raw reading this close to the HX711's 24-bit limit (+/-8388607) is
+// treated as maxed out (overloaded, or the bridge unplugged).
+static constexpr int32_t  LOADCELL_SATURATION_COUNTS = 8388000; // TBD
+
+static_assert(CAL_MIN_SAMPLES >= 2 && CAL_MIN_SAMPLES <= CAL_WINDOW_MS / 100,
+              "DynoConfig.h: a 10 Hz HX711 must be able to fill CAL_MIN_SAMPLES within CAL_WINDOW_MS");
+static_assert(CAL_WINDOW_MS * 80 / 1000 <= 128,
+              "DynoConfig.h: CAL_WINDOW_MS at 80 Hz must fit StableWindow::kMaxSamples (128)");
+static_assert(CAL_TIMEOUT_MS >= 2 * CAL_WINDOW_MS, "DynoConfig.h: the timeout must allow time to settle first");
+static_assert(CAL_MAX_SPREAD_COUNTS > 0, "DynoConfig.h: the stability spread must be positive");
+static_assert(CAL_MIN_SEPARATION_COUNTS > CAL_MAX_SPREAD_COUNTS,
+              "DynoConfig.h: the minimum separation must be larger than the allowed noise");
+static_assert(LOADCELL_SATURATION_COUNTS > 0 && LOADCELL_SATURATION_COUNTS <= 8388607,
+              "DynoConfig.h: saturation must be within the HX711's 24-bit range");
+
+// Serial command input (CommandTask). Not tuning values: these only bound
+// how much work typing can cause.
+static constexpr uint32_t COMMAND_POLL_INTERVAL_MS  = 20; // how often typed bytes are read
+static constexpr uint32_t COMMAND_MAX_BYTES_PER_POLL = 64; // the rest wait for the next poll
+static constexpr uint32_t COMMAND_QUEUE_LENGTH      = 4;  // parsed commands waiting for LoadCellTask
+static_assert(COMMAND_MAX_BYTES_PER_POLL > 0 && COMMAND_QUEUE_LENGTH > 0,
+              "DynoConfig.h: command input needs room for at least one byte and one command");
 
 // ----------------------------------------------------------------------------
 // Build switches. Override from platformio.ini with -D<NAME>=0/1.

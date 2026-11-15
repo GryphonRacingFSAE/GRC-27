@@ -1,5 +1,5 @@
 schema_version,timestamp_ms,can_received_mask,can_fresh_mask,rpm,lambda_avg,lambda_a,lambda_b,fuel_inj_pulse_width_ms,fuel_inj_duty_pct,knock_detected,rev_limit_rpm,lambda_target,battery_v,intake_air_temp_c,coolant_temp_c,gear,loadcell_raw,force_n,torque_nm,power_w,horsepower_hp,loadcell_valid,calibration_ready,calibration_version,tare_version,output_dropped_rows
-# example capture for docs/csv-output.md; the 2600 ms row uses a FIXTURE calibration and 0.25 m arm (#35 not merged yet)
+# example capture for docs/csv-output.md; the 2600 ms row uses a FIXTURE calibration and 0.25 m arm (not a real capture)
 1,0,0,0,,,,,,,,,,,,,,,,,,,0,0,,,0
 1,1500,0,0,,,,,,,,,,,,,,120000,,,,,1,0,,,0
 1,2500,127,127,6000,1.000,0.990,1.010,12.50,45.5,0,11000,0.950,13.80,25.3,90.5,3,120000,,,,,1,0,,,0

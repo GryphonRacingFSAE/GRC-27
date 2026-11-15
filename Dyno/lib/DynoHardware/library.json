@@ -1,7 +1,7 @@
 {
   "name": "DynoHardware",
   "version": "0.1.0",
-  "description": "ESP32-only adapters for the Dyno's hardware (HX711, TWAI CAN) behind DynoCore's interfaces. Not built for host tests.",
+  "description": "ESP32-only adapters for the Dyno's hardware (HX711, TWAI CAN, NVS calibration store) behind DynoCore's interfaces. Not built for host tests.",
   "frameworks": "arduino",
   "platforms": "espressif32",
   "dependencies": [
