@@ -9,6 +9,7 @@ Run these from this folder (`GRC-27/Dyno/`, where `platformio.ini` is):
 | Command | What it does | Hardware needed |
 |---|---|---|
 | `pio test -e native` | Runs the host tests on your computer (Unity, with AddressSanitizer/UBSan) | None |
+| `pio test -e native -f test_integration` | The whole dyno joined up on the host with scripted inputs: the failure matrix, restart, and the published synthetic run (see [bench-test.md](docs/bench-test.md)) | None |
 | `pio run` | Builds the ESP32-S3 firmware | None |
 | `pio run -t upload && pio device monitor` | Flashes the board and opens the serial monitor (CSV output, see [csv-output.md](docs/csv-output.md)) | Dyno board |
 | `pio run -e esp32-s3-fake -t upload && pio device monitor` | Same, but with a simulated load cell and ECU (`DYNO_FAKE_INPUTS=1`) | Any ESP32-S3 devkit |
@@ -26,12 +27,14 @@ Layout:
 - `include/Defines/DynoConfig.h`: tunable settings (timeouts, retries, calibration stability thresholds, CAN bitrate and freshness, torque/power limits, CSV row interval) and the mechanical setup. **Geometry is a placeholder until confirmed** (`GEOMETRY_CONFIRMED`, `SAME_SHAFT_CONFIRMED`): torque/power stay invalid until then.
 - `lib/DynoCore/src/EcuSignals.h`: our copy of the DBC (which ECU signals are decoded and how).
 - `test/test_*/`: host test suites. `test/test_device_*/`: on-device tests (need a devkit).
-- `docs/`: how each part works, plus hardware checklists. `docs/csv-sample.csv` is an example capture.
+- `docs/`: how each part works, plus hardware checklists. `docs/csv-sample.csv` is an example capture; `docs/synthetic-run.csv` is a whole fake session printed by `test_integration` (labelled SYNTHETIC).
 - `tools/`: `check_csv.py`, the CSV capture checker.
 
 ## Docs
 
 - [Placeholders and TBD values](PLACEHOLDERS.md): every value still waiting on a real number, measurement or team decision. **Add a row whenever you add a placeholder.**
+- [Operating the dyno](docs/operation.md): flash, connect, read the monitor, calibrate, tare, read the CSV, recover from missing inputs, synthetic vs hardware mode. **Start here.**
+- [Bench test (#39)](docs/bench-test.md): inventory, failure matrix with expected results, ordered hardware run sheet, 10-minute continuous run, results report.
 - [Load-cell acquisition (HX711)](docs/loadcell-acquisition.md): timing, library pitfalls, fake inputs, hardware checklist.
 - [Load-cell calibration and tare](docs/calibration.md): serial commands, the tare button, procedure, stability rule, versions, what is saved, tuning, hardware checklist with expected-vs-measured table.
 - [ECU CAN decoding](docs/can-decoding.md): signals, received vs fresh, driver mode, fake ECU sequence, hardware checklist.
