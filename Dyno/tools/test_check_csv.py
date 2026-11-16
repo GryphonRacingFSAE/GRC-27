@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import check_csv  # noqa: E402
 
 SAMPLE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "csv-sample.csv")
+SYNTHETIC_RUN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "docs", "synthetic-run.csv")
 HEADER = check_csv.HEADER + "\r\n"
 BLANK_ROW = "1,0,0,0,,,,,,,,,,,,,,,,,,,0,0,,,0\r\n"
 
@@ -33,6 +34,18 @@ class CheckCsv(unittest.TestCase):
         self.assertEqual(7, stats["rows"])
         self.assertEqual(0, stats["lf_only"])
         self.assertEqual(0, check_csv.main(["check_csv.py", SAMPLE]))
+
+    def test_synthetic_run_passes_and_is_labelled(self):
+        # docs/synthetic-run.csv (#39) is printed by test_integration: the
+        # whole fake rig, a reboot included (so two headers).
+        with open(SYNTHETIC_RUN, "r", encoding="ascii", newline="") as f:
+            lines = f.readlines()
+        errors, stats = check_csv.check(lines)
+        self.assertEqual([], errors)
+        self.assertEqual(2, stats["headers"])
+        self.assertGreater(stats["rows"], 200)
+        self.assertEqual(0, stats["lf_only"])
+        self.assertTrue(lines[0].startswith("# SYNTHETIC RUN:"))
 
     def test_header_has_the_27_issue_names(self):
         self.assertEqual(27, len(check_csv.COLUMNS))

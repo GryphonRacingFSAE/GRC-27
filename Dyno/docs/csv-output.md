@@ -161,7 +161,7 @@ It checks the header, 27 cells per row, numeric-or-empty cells, always-present c
 | `python3 tools/test_check_csv.py` | The capture checker (12 tests) | none |
 | `pio run -e esp32-s3-fake` then upload | Whole firmware with fake inputs: CSV rows following the demo timeline | devkit |
 
-## Hardware checklist (not yet done; physical end-to-end validation is #39)
+## Hardware checklist (not yet done; physical end-to-end validation is #39, see [bench-test.md](bench-test.md))
 
 Everything above was tested **on the host only**. Fill in on the bench:
 
